@@ -6,7 +6,161 @@
 #include <filesystem>
 #include <tuple>
 
+//defining some useful types
+typedef std::array<double , 500> data_vec;
+typedef std::vector<double> big_vector;
+typedef std::vector<std::vector<double>> data_table;
+
+//function to read in the data from the tabulated equation of state
+std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
+    
+    //load the file
+    std::ifstream file("Plasma19_EoS.txt"); 
+
+    //set up the lines, starting row, and data arrays
+    std::string line;
+    int row = 0;
+    data_vec densities;
+    data_vec pressures;
+
+    //we want to save sound speeds, energies, temperatures, electrical conductivity and thermal conductivity in tables
+    data_table sound_speeds(500, std::vector<double>(500));
+    data_table energies(500, std::vector<double>(500));
+    data_table temperatures(500, std::vector<double>(500));
+    data_table electrical_conductivity(500, std::vector<double>(500));
+    data_table thermal_conductivity(500, std::vector<double>(500));
+    
+    //now loop over the data file row by row, we only want the fifth and sixth row for densities and pressures
+    while(std::getline(file , line)){
+        row++;
+
+        if( row ==10 || row ==12 ){
+            std::istringstream iss(line); //extract the line
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            } //put it temporarily in an array
+
+            //then save the densities and pressures used for indexing the tables
+
+            for(int i=0; i<500; ++i){
+                if(row ==10){
+                    densities[i] = row_data[i];
+                }
+                if(row ==12){
+                    pressures[i] = row_data[i];
+                }
+            }
+        }
+
+        //sound speed
+        if( row >= 14 && row< 514){
+            std::istringstream iss(line); 
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            }
+
+            sound_speeds[row-14] = std::move(row_data);
+        }
+
+        //internal energy
+        if( row >= 515 && row< 1015){
+            std::istringstream iss(line); 
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            }
+            if(row_data.size() != 500) {
+                std::cerr << "Row " << row << " for energy has " << row_data.size() << " values, expected 500.\n";
+                exit(1);
+            }
+
+            energies[row-515] = std::move(row_data);
+        }
+
+        //temperatures
+        if( row >= 1016 && row< 1516){
+            std::istringstream iss(line);
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            }
+
+            temperatures[row-1016] = std::move(row_data);
+        }
+
+        //electrical conductivity
+        if( row >= 1517 && row< 2017){
+            std::istringstream iss(line); 
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            }
+
+            electrical_conductivity[row-1517] = std::move(row_data);
+        }
+
+        //thermal conductivity
+        if( row >= 2018 && row< 2518){
+            std::istringstream iss(line); 
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            }
+
+            thermal_conductivity[row-2018] = std::move(row_data);
+        }
+    }
+
+
+    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity};
+}
+
+//import our data tables and arrays as global variables
+
+auto EoS_data = Plasma19(); // the tuple
+const auto& densities = std::get<0>(EoS_data);
+const auto& pressures = std::get<1>(EoS_data);
+const auto& sound_speeds = std::get<2>(EoS_data);
+const auto& energies = std::get<3>(EoS_data);
+const auto& temperatures = std::get<4>(EoS_data);
+const auto& electrical_conductivity = std::get<5>(EoS_data);
+const auto& thermal_conductivity = std::get<6>(EoS_data);
+
+//function to perform bilinear interpolation on a simplified grid (0,0) , (0,1) , (1,0) , (1,1)
+double BilinearInterpolation(double f_NE, double f_SE, double f_SW, double f_NW, double x, double y){
+    double f_x_y1 = (1-x)*f_SW + x*f_SE;
+    double f_x_y2 = (1-x)*f_NW + x*f_NE;
+    double f_x_y = (1-y)*f_x_y1 + y*f_x_y2;
+
+    return f_x_y;
+}
+
+//function to 'reverse' bilinear interpolation on a simplified grid (0,0) , (0,1) , (1,0) , (1,1)
+double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, double f_NW, double x, double f_x_y){
+    double f_x_y1 = (1-x)*f_SW + x*f_SE;
+    double f_x_y2 = (1-x)*f_NW + x*f_NE;
+    double y = (f_x_y - f_x_y1) / (f_x_y2 - f_x_y1);
+    if(f_x_y2 == f_x_y1){y = 1;}
+
+    return y;
+}
+
 std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u , double gamma){
+    //start with variables that dont require equation of state
     std::array<double ,9> v;
     v[0] = u[0]; //density
     v[1] = u[0] * u[1]; //vx
@@ -15,11 +169,84 @@ std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u ,
     v[5] = u[5]; //Bx
     v[6] = u[6]; //By
     v[7] = u[7]; //Bz
-    v[4] = u[4] / (gamma-1) + 0.5*u[0]*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]); //energy
     v[8] = u[8];
+
+    //find index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio =1;}
+    
+
+    //find index for pressure also with binary search
+    point1 =0;
+    point2 =499;
+    half;
+    int pressure_index;
+    double p = u[4];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double energies_NE = energies[pressure_top_i][density_top_i];
+    double energies_SE = energies[pressure_bottom_i][density_top_i];
+    double energies_SW = energies[pressure_bottom_i][density_bottom_i];
+    double energies_NW = energies[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
+
+    v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]);
+
     return v;
 }
 std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u , double gamma){
+    //start with variables that dont require equation of state
     std::array<double , 9> v;
     v[0] = u[0];
     v[1] = u[1] / u[0];
@@ -28,8 +255,77 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u , 
     v[5] = u[5];
     v[6] = u[6];
     v[7] = u[7];
-    v[4] = (u[4] - 0.5*v[0]*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]))*(gamma -1);//pressure
     v[8] = u[8];
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = v[0];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+
+    //find our indices for pressure with binary search on the density-based linear interpolation of energies
+    point1 =0;
+    point2 =499;
+    half;
+    int pressure_index;
+    double e = (u[3] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3])) / rho; //internal energy
+
+    //find the indices either side of our energy value in density top and bottom, they should be the same
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(e > (energies[half][density_bottom_i] + density_ratio*(energies[half][density_top_i] - energies[half][density_bottom_i]))){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+    int pressure_top_i = point2;
+    int pressure_bottom_i = point1;
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up our quadrant to search in
+    double energies_NE = energies[pressure_top_i][density_top_i];
+    double energies_SE = energies[pressure_bottom_i][density_top_i];
+    double energies_SW = energies[pressure_bottom_i][density_bottom_i];
+    double energies_NW = energies[pressure_top_i][density_bottom_i];
+
+    //reverse bilinear interpolation
+    double pressure_ratio = ReverseBilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , e); 
+    
+    //calculate the value of pressure
+    double p = pressure_ratio * (pressures[pressure_top_i] - pressures[pressure_bottom_i]) + pressures[pressure_bottom_i];
+
+    v[4] = p;
     return v;
 }
 
