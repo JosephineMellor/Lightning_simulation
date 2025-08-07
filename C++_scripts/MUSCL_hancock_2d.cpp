@@ -159,7 +159,7 @@ double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, doubl
     return y;
 }
 
-std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u , double gamma){
+std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u ){
     //start with variables that dont require equation of state
     std::array<double ,9> v;
     v[0] = u[0]; //density
@@ -170,6 +170,8 @@ std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u ,
     v[6] = u[6]; //By
     v[7] = u[7]; //Bz
     v[8] = u[8];
+
+    double B2 = (u[5]*u[5] + u[6]*u[6] + u[7]*u[7]);
 
     //find index for density with binary search
     int point1 =0;
@@ -241,11 +243,11 @@ std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u ,
     //linear interpolate using our variables from before
     double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
 
-    v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]);
+    v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5 * B2;
 
     return v;
 }
-std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u , double gamma){
+std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
     //start with variables that dont require equation of state
     std::array<double , 9> v;
     v[0] = u[0];
@@ -256,6 +258,8 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u , 
     v[6] = u[6];
     v[7] = u[7];
     v[8] = u[8];
+
+    double B2 = (u[5]*u[5] + u[6]*u[6] + u[7]*u[7]);
 
     //find our index for density with binary search
     int point1 =0;
@@ -292,7 +296,7 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u , 
     point2 =499;
     half;
     int pressure_index;
-    double e = (u[3] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3])) / rho; //internal energy
+    double e = (u[3] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
 
     //find the indices either side of our energy value in density top and bottom, they should be the same
     while(std::abs(point1-point2)>1){
@@ -329,8 +333,84 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u , 
     return v;
 }
 
-std::array<double , 9> FluxDefX(const std::array<double , 9>& u , double gamma , double ch){//conservative variables go into this function
-    std::array<double , 9> v = ConservativeToPrimitive(u , gamma);
+double SoundSpeed(const std::array<double,9> u){
+    std::array<double , 9> prim = ConservativeToPrimitive(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[3];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double ss_NE = sound_speeds[pressure_top_i][density_top_i];
+    double ss_SE = sound_speeds[pressure_bottom_i][density_top_i];
+    double ss_SW = sound_speeds[pressure_bottom_i][density_bottom_i];
+    double ss_NW = sound_speeds[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double sound_speed = BilinearInterpolation(ss_NE , ss_SE , ss_SW , ss_NW , density_ratio , pressure_ratio);  
+    
+    return sound_speed;
+}
+
+std::array<double , 9> FluxDefX(const std::array<double , 9>& u , double ch){//conservative variables go into this function
+    std::array<double , 9> v = ConservativeToPrimitive(u);
     std::array<double , 9> flux;
     flux[0] = u[1]; //rho v_x
     flux[1] = u[0]*v[1]*v[1] + v[4] + 0.5*( u[5]*u[5] + u[6]*u[6] + u[7]*u[7] ) - u[5]*u[5]; 
@@ -344,8 +424,8 @@ std::array<double , 9> FluxDefX(const std::array<double , 9>& u , double gamma ,
     return flux;
 }
 
-std::array<double , 9> FluxDefY(const std::array<double , 9>& u , double gamma, double ch){//conservative variables go into this function
-    std::array<double , 9> v = ConservativeToPrimitive(u , gamma);
+std::array<double , 9> FluxDefY(const std::array<double , 9>& u , double ch){//conservative variables go into this function
+    std::array<double , 9> v = ConservativeToPrimitive(u);
     std::array<double , 9> flux;
     flux[0] = u[2]; //rho v_y
     flux[1] = u[0]*v[1]*v[2] - v[5]*v[6];
@@ -364,7 +444,7 @@ double psiUpdate(double psi, double ch, double dt){
     return NewPsi;
 }
 
-std::tuple <double, double > ComputeTimeStep(const std::vector<std::vector<std::array <double , 9>>>& u  , double C, double dx, double dy, double gamma) {
+std::tuple <double, double > ComputeTimeStep(const std::vector<std::vector<std::array <double , 9>>>& u  , double C, double dx, double dy) {
     double maxSpeed = 0.0;
     for(int i=1; i<u.size() -2; ++i){
         for (int j=1; j<u[0].size()-2; ++j) {
@@ -377,14 +457,16 @@ std::tuple <double, double > ComputeTimeStep(const std::vector<std::vector<std::
             double By = u[i][j][6];
             double Bz = u[i][j][7];
 
+            std::array<double,9> v = ConservativeToPrimitive(u[i][j]);
+            double sound_speed = SoundSpeed(u[i][j]);
+
             double u_x = mom_x / rho;
             double u_y = mom_y / rho;
             double u_z = mom_z / rho;
             double intermediate = 0.5 * rho *( u_x * u_x + u_y*u_y + u_z*u_z) + 0.5*(Bx*Bx + By*By + Bz*Bz);
             double BmagSquared = Bx*Bx + By*By + Bz*Bz;
-            double pressure = (gamma - 1.0) * (E - intermediate);
+            double pressure = v[4];
 
-            double sound_speed = std::sqrt(gamma * pressure / rho);
             double alfven_speed = std::abs(Bx) / std::sqrt(rho);
             double slow_ma_speed = std::sqrt( 0.5*(sound_speed*sound_speed + (BmagSquared/rho) - std::sqrt((sound_speed*sound_speed + BmagSquared/rho)*(sound_speed*sound_speed + BmagSquared/rho) - 4.0*sound_speed*sound_speed*Bx*Bx / rho)));
             
@@ -414,7 +496,7 @@ std::tuple <double, double > ComputeTimeStep(const std::vector<std::vector<std::
     double dt = C * dspace / maxSpeed;
      return {dt, maxSpeed};
 }
-std::tuple<double,double> psiAndBx(const std::array<double ,9>&x,const std::array<double ,9>y, double gamma, double ch){
+std::tuple<double,double> psiAndBx(const std::array<double ,9>&x,const std::array<double ,9>y, double ch){
     double psiL = x[8];
     double psiR = y[8];
     double BxL = x[5];
@@ -423,7 +505,7 @@ std::tuple<double,double> psiAndBx(const std::array<double ,9>&x,const std::arra
     double psiTilde = 0.5*(psiL + psiR) - (ch/2.0)*(BxR - BxL);
     return{BxTilde, psiTilde};
 }
-std::tuple<double,double> psiAndBy(const std::array<double ,9>&x,const std::array<double ,9>&y, double gamma, double ch){
+std::tuple<double,double> psiAndBy(const std::array<double ,9>&x,const std::array<double ,9>&y,double ch){
     double psiL = x[8];
     double psiR = y[8];
     double ByL = x[6];
@@ -433,10 +515,10 @@ std::tuple<double,double> psiAndBy(const std::array<double ,9>&x,const std::arra
     return{ByTilde, psiTilde};
 }
 
-std::tuple<double,double> speedsx( const std::array<double , 9>&x , double gamma, double BxTilde){
+std::tuple<double,double> speedsx( const std::array<double , 9>&x ,  double BxTilde){
     
     // Collect conservative and primitive variables
-    auto primX = ConservativeToPrimitive(x,gamma);
+    auto primX = ConservativeToPrimitive(x);
     double rho = x[0];
     double u_x = primX[1];
     double u_y = primX[2];
@@ -452,7 +534,7 @@ std::tuple<double,double> speedsx( const std::array<double , 9>&x , double gamma
     double pT = p + 0.5*B2;
 
     //find the sound speed
-    double cs2 = gamma*p / rho;
+    double cs2 = SoundSpeed(x);
 
     //find the fast speed
     double cfa2 = 0.5*(cs2 + B2/rho + std::sqrt((cs2 + B2/rho)*(cs2 + B2/rho) - 4.0*cs2*Bx*Bx/rho));
@@ -460,15 +542,15 @@ std::tuple<double,double> speedsx( const std::array<double , 9>&x , double gamma
     return {cs2,cfa2};
 }
 
-std::tuple<double,double,double> wavespeedx(const std::array<double,9>&x,const std::array<double,9>&y,double gamma, double ch, double BxTilde){
+std::tuple<double,double,double> wavespeedx(const std::array<double,9>&x,const std::array<double,9>&y, double ch, double BxTilde){
     
     //collect our wave speeds squared from the previous function
-    auto[cs2L,cfa2L] = speedsx(x,gamma,BxTilde);
-    auto[cs2R,cfa2R] = speedsx(y,gamma,BxTilde);
+    auto[cs2L,cfa2L] = speedsx(x,BxTilde);
+    auto[cs2R,cfa2R] = speedsx(y,BxTilde);
 
     //cprimitive variables for other calculations
-    auto primL = ConservativeToPrimitive(x,gamma);
-    auto primR = ConservativeToPrimitive(y,gamma);
+    auto primL = ConservativeToPrimitive(x);
+    auto primR = ConservativeToPrimitive(y);
 
     //left and right wave speeds
     double sL = std::min(primL[1], primR[1]) - std::max(std::sqrt(cfa2L),std::sqrt(cfa2R));
@@ -490,10 +572,10 @@ std::tuple<double,double,double> wavespeedx(const std::array<double,9>&x,const s
     return {sL, qStar, sR};
 }
 
-std::tuple<double,double> speedsy( const std::array<double , 9>&x , double gamma , double ByTilde){
+std::tuple<double,double> speedsy( const std::array<double , 9>&x , double ByTilde){
     
     // collect primitive and conservative variables
-    auto primX = ConservativeToPrimitive(x,gamma);
+    auto primX = ConservativeToPrimitive(x);
     double rho = x[0];
     double u_x = primX[1];
     double u_y = primX[2];
@@ -509,7 +591,7 @@ std::tuple<double,double> speedsy( const std::array<double , 9>&x , double gamma
     double pT = p + 0.5*B2;
 
     //calculate sound speed
-    double cs2 = gamma*p / rho;
+    double cs2 = SoundSpeed(x);
 
     //find the fast speed
     double cfa2 = 0.5*(cs2 + B2/rho + std::sqrt((cs2 + B2/rho)*(cs2 + B2/rho) - 4.0*cs2*By*By/rho));
@@ -517,15 +599,15 @@ std::tuple<double,double> speedsy( const std::array<double , 9>&x , double gamma
     return {cs2,cfa2};
 }
 
-std::tuple<double,double,double> wavespeedy(const std::array<double,9>x,const std::array<double,9>y,double gamma, double ch, double ByTilde){
+std::tuple<double,double,double> wavespeedy(const std::array<double,9>x,const std::array<double,9>y,double ch, double ByTilde){
    
     //collect the wave speeds squared from the previous function
-    auto[cs2L,cfa2L] = speedsy(x,gamma, ByTilde);
-    auto[cs2R,cfa2R] = speedsy(y,gamma, ByTilde);
+    auto[cs2L,cfa2L] = speedsy(x, ByTilde);
+    auto[cs2R,cfa2R] = speedsy(y, ByTilde);
 
     //get primitive variables for other calculations
-    auto primL = ConservativeToPrimitive(x,gamma);
-    auto primR = ConservativeToPrimitive(y,gamma);
+    auto primL = ConservativeToPrimitive(x);
+    auto primR = ConservativeToPrimitive(y);
 
     //left and right wave speeds
     double sL = std::min(primL[2], primR[2]) - std::max(std::sqrt(cfa2L),std::sqrt(cfa2R));
@@ -548,14 +630,14 @@ std::tuple<double,double,double> wavespeedy(const std::array<double,9>x,const st
     return {sL, qStar, sR};
 }
 
-std::array<double , 9> uHLLx ( const std::array<double , 9>&x , const std::array<double , 9>& y , double gamma,double ch, double BxTilde){
+std::array<double , 9> uHLLx ( const std::array<double , 9>&x , const std::array<double , 9>& y , double ch, double BxTilde){
     
     //get wave speeds for left riht and intermediate
-    auto [sL, qStar, sR] = wavespeedx(x, y, gamma, ch, BxTilde);
+    auto [sL, qStar, sR] = wavespeedx(x, y,  ch, BxTilde);
 
     std::array<double , 9> uStar;
-    auto FluxX = FluxDefX(x, gamma, ch);
-    auto FluxY = FluxDefX(y, gamma,ch);
+    auto FluxX = FluxDefX(x,  ch);
+    auto FluxY = FluxDefX(y, ch);
 
     //calculate the intemediate value U*
     for (int i = 0; i < 9; ++i) {
@@ -575,14 +657,14 @@ std::array<double , 9> uHLLx ( const std::array<double , 9>&x , const std::array
     return uHLL;
 }
 
-std::array<double , 9> uHLLy ( const std::array<double , 9>&x , const std::array<double , 9>& y , double gamma, double ch, double ByTilde){
+std::array<double , 9> uHLLy ( const std::array<double , 9>&x , const std::array<double , 9>& y ,  double ch, double ByTilde){
    
     //get wave speeds for left right and intermediate
-    auto [sL, qStar, sR] = wavespeedy(x, y, gamma, ch, ByTilde);
+    auto [sL, qStar, sR] = wavespeedy(x, y,  ch, ByTilde);
     
     std::array<double , 9> uStar;
-    auto FluxX = FluxDefY(x, gamma,ch);
-    auto FluxY = FluxDefY(y, gamma,ch);
+    auto FluxX = FluxDefY(x, ch);
+    auto FluxY = FluxDefY(y, ch);
 
     //calculate the intermediate value U*
     for (int i = 0; i < 9; ++i) {
@@ -602,12 +684,12 @@ std::array<double , 9> uHLLy ( const std::array<double , 9>&x , const std::array
     return uHLL;
 }
 
-std::tuple<std::array<double , 9>, std::array<double , 9>> uStarX( const std::array<double , 9>&x , const std::array<double , 9>& y , double gamma , double ch, double BxTilde, double psiTilde){
+std::tuple<std::array<double , 9>, std::array<double , 9>> uStarX( const std::array<double , 9>&x , const std::array<double , 9>& y , double ch, double BxTilde, double psiTilde){
 
-    auto [sL, qStar, sR] = wavespeedx(x, y, gamma, ch, BxTilde);
-    auto primL = ConservativeToPrimitive(x, gamma);
-    auto primR = ConservativeToPrimitive(y, gamma);
-    auto uHLL = uHLLx(x, y, gamma, ch, BxTilde);
+    auto [sL, qStar, sR] = wavespeedx(x, y,  ch, BxTilde);
+    auto primL = ConservativeToPrimitive(x);
+    auto primR = ConservativeToPrimitive(y);
+    auto uHLL = uHLLx(x, y, ch, BxTilde);
 
     // Left state primitives and conserved variables
     double rhoL = x[0];
@@ -690,12 +772,12 @@ std::tuple<std::array<double , 9>, std::array<double , 9>> uStarX( const std::ar
     return {uStarL, uStarR};
 }
 
-std::tuple<std::array<double , 9>, std::array<double , 9>> uStarY( const std::array<double , 9>&x , const std::array<double , 9>& y , double gamma , double ch, double ByTilde, double psiTilde){
+std::tuple<std::array<double , 9>, std::array<double , 9>> uStarY( const std::array<double , 9>&x , const std::array<double , 9>& y , double ch, double ByTilde, double psiTilde){
    
-    auto [sL,qStar,sR] = wavespeedy(x,y,gamma,ch, ByTilde);
-    auto primL = ConservativeToPrimitive(x,gamma);
-    auto primR = ConservativeToPrimitive(y,gamma);
-    auto uHLL = uHLLy(x,y,gamma,ch, ByTilde);
+    auto [sL,qStar,sR] = wavespeedy(x,y,ch, ByTilde);
+    auto primL = ConservativeToPrimitive(x);
+    auto primR = ConservativeToPrimitive(y);
+    auto uHLL = uHLLy(x,y,ch, ByTilde);
 
     // Left state primitive and conservative variables
     double rhoL = x[0];
@@ -776,11 +858,11 @@ std::tuple<std::array<double , 9>, std::array<double , 9>> uStarY( const std::ar
 
 }
 
-std::array<double,9> FluxHLLCX(const std::array<double,9>& x, const std::array<double,9>& y, double gamma, double ch){
-    auto [BxTilde, psiTilde] = psiAndBx(x,y,gamma,ch);
+std::array<double,9> FluxHLLCX(const std::array<double,9>& x, const std::array<double,9>& y,  double ch){
+    auto [BxTilde, psiTilde] = psiAndBx(x,y,ch);
     
-    auto [uStarL, uStarR] = uStarX(x,y,gamma,ch,BxTilde, psiTilde);
-    auto [sL, qStar, sR] = wavespeedx(x, y, gamma, ch, BxTilde);
+    auto [uStarL, uStarR] = uStarX(x,y,ch,BxTilde, psiTilde);
+    auto [sL, qStar, sR] = wavespeedx(x, y,  ch, BxTilde);
 
     //construct a new vector with cleaning to use in the flux calculations
     std::array<double,9> x1,y1;
@@ -790,8 +872,8 @@ std::array<double,9> FluxHLLCX(const std::array<double,9>& x, const std::array<d
     x1[8] = y1[8] = psiTilde;
 
     //calculate the flux with these values
-    std::array<double , 9> FluxL = FluxDefX(x1,gamma,ch);
-    std::array<double , 9> FluxR = FluxDefX(y1,gamma,ch);
+    std::array<double , 9> FluxL = FluxDefX(x1,ch);
+    std::array<double , 9> FluxR = FluxDefX(y1,ch);
     std::array<double , 9> FluxHLLC;
 
     //use the conditions from the wave speeds to decide which intermediate to take
@@ -810,11 +892,11 @@ std::array<double,9> FluxHLLCX(const std::array<double,9>& x, const std::array<d
     return FluxHLLC;
 }
 
-std::array<double,9> FluxHLLCY(const std::array<double,9> &x, const std::array<double,9> &y, double gamma, double ch){
-    auto [ByTilde, psiTilde] = psiAndBy(x,y,gamma,ch); //start function by applying divergence cleaning
+std::array<double,9> FluxHLLCY(const std::array<double,9> &x, const std::array<double,9> &y, double ch){
+    auto [ByTilde, psiTilde] = psiAndBy(x,y,ch); //start function by applying divergence cleaning
     
-    auto [uStarL, uStarR] = uStarY(x,y,gamma,ch, ByTilde, psiTilde);
-    auto [sL, qStar, sR] = wavespeedy(x, y, gamma, ch, ByTilde);
+    auto [uStarL, uStarR] = uStarY(x,y,ch, ByTilde, psiTilde);
+    auto [sL, qStar, sR] = wavespeedy(x, y,  ch, ByTilde);
 
     //construct a new vector with the cleaning for divergence to use in the flux functions
     std::array<double,9> x1,y1;
@@ -824,8 +906,8 @@ std::array<double,9> FluxHLLCY(const std::array<double,9> &x, const std::array<d
     x1[8] = y1[8] = psiTilde;
 
     //then calulate the flux with the cleaned vectors
-    std::array<double , 9> FluxL = FluxDefY(x1,gamma,ch);
-    std::array<double , 9> FluxR = FluxDefY(y1,gamma,ch);
+    std::array<double , 9> FluxL = FluxDefY(x1,ch);
+    std::array<double , 9> FluxR = FluxDefY(y1,ch);
     std::array<double , 9> FluxHLLC;
 
     //use the conditions from the wave speeds to decide which intermediate values to take
@@ -844,57 +926,57 @@ std::array<double,9> FluxHLLCY(const std::array<double,9> &x, const std::array<d
     return FluxHLLC;
 }
 
-std::array<double , 9> FluxHLLX(const std::array<double , 9>&x , const std::array<double , 9> &y , double gamma,double ch){
-    auto [BxTilde, psiTilde] = psiAndBx(x,y,gamma,ch);
+std::array<double , 9> FluxHLLX(const std::array<double , 9>&x , const std::array<double , 9> &y , double ch){
+    auto [BxTilde, psiTilde] = psiAndBx(x,y,ch);
     std::array<double,9> x1,y1;
     x1=x;
     y1=y;
     // x1[5] = y1[5] = BxTilde;
     // x1[8] = y1[8] = psiTilde;
-    auto [uStarL, uStarR] = uStarX(x1,y1,gamma,ch, BxTilde, psiTilde);
-    auto [sL, qStar, sR] = wavespeedx(x1, y1, gamma, ch, BxTilde);
+    auto [uStarL, uStarR] = uStarX(x1,y1,ch, BxTilde, psiTilde);
+    auto [sL, qStar, sR] = wavespeedx(x1, y1,  ch, BxTilde);
     
     std::array<double , 9> Flux;
     if(sL >= 0){
-        Flux = FluxDefX(x1,gamma,ch);
+        Flux = FluxDefX(x1,ch);
     }
     else if(sL < 0 && sR > 0){
-        auto FluxX = FluxDefX(x1,gamma,ch);
-        auto FluxY = FluxDefX(y1,gamma,ch);
+        auto FluxX = FluxDefX(x1,ch);
+        auto FluxY = FluxDefX(y1,ch);
         for(int i=0 ; i<9; ++i){
             Flux[i] = (sR*FluxX[i] - sL*FluxY[i] + sL*sR*(y1[i] - x1[i]))/(sR - sL);
         }
     }
     else { // sR <= 0
-        Flux = FluxDefX(y1,gamma,ch);
+        Flux = FluxDefX(y1,ch);
     }
     
     return Flux;
 }
 
-std::array<double , 9> FluxHLLY(const std::array<double , 9>&x , const std::array<double , 9>& y , double gamma,double ch){
-    auto [ByTilde, psiTilde] = psiAndBy(x,y,gamma,ch);
+std::array<double , 9> FluxHLLY(const std::array<double , 9>&x , const std::array<double , 9>& y , double ch){
+    auto [ByTilde, psiTilde] = psiAndBy(x,y,ch);
     std::array<double,9> x1,y1;
     x1=x;
     y1=y;
     // x1[6] = y1[6] = ByTilde;
     // x1[8] = y1[8] = psiTilde;
-    auto [uStarL, uStarR] = uStarY(x1,y1,gamma,ch, ByTilde, psiTilde);
-    auto [sL, qStar, sR] = wavespeedy(x1, y1, gamma, ch, ByTilde);
+    auto [uStarL, uStarR] = uStarY(x1,y1,ch, ByTilde, psiTilde);
+    auto [sL, qStar, sR] = wavespeedy(x1, y1,  ch, ByTilde);
     
     std::array<double , 9> Flux;
     if(sL >= 0){
-        Flux = FluxDefY(x1,gamma,ch);
+        Flux = FluxDefY(x1,ch);
     }
     else if(sL < 0 && sR > 0){
-        auto FluxX = FluxDefY(x1,gamma,ch);
-        auto FluxY = FluxDefY(y1,gamma,ch);
+        auto FluxX = FluxDefY(x1,ch);
+        auto FluxY = FluxDefY(y1,ch);
         for(int i=0 ; i<9; ++i){
             Flux[i] = (sR*FluxX[i] - sL*FluxY[i] + sL*sR*(y1[i] - x1[i]))/(sR - sL);
         }
     }
     else { // sR <= 0
-        Flux = FluxDefY(y1,gamma,ch);
+        Flux = FluxDefY(y1,ch);
     }
     
     return Flux;
@@ -902,20 +984,20 @@ std::array<double , 9> FluxHLLY(const std::array<double , 9>&x , const std::arra
 
 void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u, int nxCells, int nyCells) {
     // Left and Right boundaries periodic
-    for (int j = 0; j < nyCells + 2; ++j) {
-        u[0][j] = u[nxCells][j]; 
-        u[1][j] = u[nxCells+1][j];      // Left boundary
-        u[nxCells + 2][j] = u[2][j]; 
-        u[nxCells + 3][j] = u[3][j];  // Right boundary
-    }
+    // for (int j = 0; j < nyCells + 2; ++j) {
+    //     u[0][j] = u[nxCells][j]; 
+    //     u[1][j] = u[nxCells+1][j];      // Left boundary
+    //     u[nxCells + 2][j] = u[2][j]; 
+    //     u[nxCells + 3][j] = u[3][j];  // Right boundary
+    // }
 
     // Left and Right boundaries transmissive
-    // for (int j = 0; j < nyCells + 2; ++j) {
-    //     u[0][j] = u[2][j]; 
-    //     u[1][j] = u[3][j];      // Left boundary
-    //     u[nxCells + 2][j] = u[nxCells][j]; 
-    //     u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
-    // }
+    for (int j = 0; j < nyCells + 2; ++j) {
+        u[0][j] = u[2][j]; 
+        u[1][j] = u[3][j];      // Left boundary
+        u[nxCells + 2][j] = u[nxCells][j]; 
+        u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
+    }
 
     // Bottom and Top boundaries, reflective
     // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
@@ -934,34 +1016,33 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u,
     // }
 
     //bottom and top periodic
-    for (int i = 0; i < nxCells + 2; ++i) {
-        u[i][0] = u[i][nyCells];      // Bottom boundary
-        u[i][1] = u[i][nyCells+1];    
-        u[i][nyCells + 2] = u[i][2];  // Top boundary
-        u[i][nyCells + 3] = u[i][3];  
-    }
+    // for (int i = 0; i < nxCells + 2; ++i) {
+    //     u[i][0] = u[i][nyCells];      // Bottom boundary
+    //     u[i][1] = u[i][nyCells+1];    
+    //     u[i][nyCells + 2] = u[i][2];  // Top boundary
+    //     u[i][nyCells + 3] = u[i][3];  
+    // }
 
     //bottom and top transmissive
-    // for (int i = 0; i < nxCells + 2; ++i) {
-    //     u[i][0] = u[i][2];      // Bottom boundary
-    //     u[i][1] = u[i][3];    
-    //     u[i][nyCells + 2] = u[i][nyCells];  // Top boundary
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  
-    // }
+    for (int i = 0; i < nxCells + 2; ++i) {
+        u[i][0] = u[i][2];      // Bottom boundary
+        u[i][1] = u[i][3];    
+        u[i][nyCells + 2] = u[i][nyCells];  // Top boundary
+        u[i][nyCells + 3] = u[i][nyCells + 1];  
+    }
 }
 
 
 int main() { 
-    int nxCells = 256; 
-    int nyCells = 256;
+    int nxCells = 800; 
+    int nyCells = 800;
     double x0 = 0.0;
-    double x1 = 1.0;
+    double x1 = 800.0;
     double y0 = 0.0;
-    double y1 = 1.0;
+    double y1 = 800.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.5;
+    double tStop = 80;
     double C = 0.8;
-    double gamma = 5.0 / 3.0;
     double dx = (x1 - x0) / nxCells; 
     double dy = (y1 - y0) / nyCells;
     const double pi = 3.14159265358979323846;
@@ -1020,46 +1101,46 @@ int main() {
             std::array<double, 9> prim;
 
             //Brio-Wu 
-            // if(y <= 400 && x<= 400) {
-            //     prim[0] = 1; // Density
-            //     prim[1] = 0; // Velocity
-            //     prim[2] = 0;
-            //     prim[3] = 0;
-            //     prim[4] = 1; // pressure
-            //     prim[5] = 1.0;// magnetic field
-            //     prim[6] = 0.75;
-            //     prim[7] = 0; 
-            // }
-            // else if(y <= 400 && x> 400) {
-            //     prim[0] = 1; // Density
-            //     prim[1] = 0; // Velocity
-            //     prim[2] = 0;
-            //     prim[3] = 0;
-            //     prim[4] = 1; // pressure
-            //     prim[5] = 1.0; // magnetic field
-            //     prim[6] = 0.75;
-            //     prim[7] = 0; 
-            // }
-            // else if(y > 400 && x<= 400) {
-            //     prim[0] = 0.125; // Density
-            //     prim[1] = 0; // Velocity
-            //     prim[2] = 0;
-            //     prim[3] = 0;
-            //     prim[4] = 0.1; // pressure
-            //     prim[5] = -1.0; // magnetic field
-            //     prim[6] = 0.75;
-            //     prim[7] = 0;  
-            //     }
-            // else{
-            //     prim[0] = 0.125; // Density
-            //     prim[1] = 0; // Velocity
-            //     prim[2] = 0;
-            //     prim[3] = 0;
-            //     prim[4] = 0.1; // pressure
-            //     prim[5] = -1.0; // magnetic field
-            //     prim[6] = 0.75;
-            //     prim[7] = 0;  
-            //     } 
+            if(y <= 400 && x<= 400) {
+                prim[0] = 1; // Density
+                prim[1] = 0; // Velocity
+                prim[2] = 0;
+                prim[3] = 0;
+                prim[4] = 1; // pressure
+                prim[5] = 1.0;// magnetic field
+                prim[6] = 0.75;
+                prim[7] = 0; 
+            }
+            else if(y <= 400 && x> 400) {
+                prim[0] = 1; // Density
+                prim[1] = 0; // Velocity
+                prim[2] = 0;
+                prim[3] = 0;
+                prim[4] = 1; // pressure
+                prim[5] = 1.0; // magnetic field
+                prim[6] = 0.75;
+                prim[7] = 0; 
+            }
+            else if(y > 400 && x<= 400) {
+                prim[0] = 0.125; // Density
+                prim[1] = 0; // Velocity
+                prim[2] = 0;
+                prim[3] = 0;
+                prim[4] = 0.1; // pressure
+                prim[5] = -1.0; // magnetic field
+                prim[6] = 0.75;
+                prim[7] = 0;  
+                }
+            else{
+                prim[0] = 0.125; // Density
+                prim[1] = 0; // Velocity
+                prim[2] = 0;
+                prim[3] = 0;
+                prim[4] = 0.1; // pressure
+                prim[5] = -1.0; // magnetic field
+                prim[6] = 0.75;
+                prim[7] = 0;  
+                } 
             
                 
             // double cos45 = 0.70710678118;
@@ -1104,29 +1185,29 @@ int main() {
             // prim[8] = 0;
 
             //Orszag-Tang
-            prim[0] = gamma*gamma; // Density
-            prim[1] = -std::sin(2.0*pi*y); // Velocity
-            prim[2] = std::sin(2.0*pi*x);
-            prim[3] = 0.0;
-            prim[4] = gamma; // pressure
-            prim[5] = -std::sin(2.0*pi*y); // magnetic field
-            prim[6] = std::sin(4.0*pi*x);
-            prim[7] = 0.0; 
-            prim[8] = 0;
+            // prim[0] = gamma*gamma; // Density
+            // prim[1] = -std::sin(2.0*pi*y); // Velocity
+            // prim[2] = std::sin(2.0*pi*x);
+            // prim[3] = 0.0;
+            // prim[4] = gamma; // pressure
+            // prim[5] = -std::sin(2.0*pi*y); // magnetic field
+            // prim[6] = std::sin(4.0*pi*x);
+            // prim[7] = 0.0; 
+            // prim[8] = 0;
 
 
-            u[i][j] = PrimitiveToConservative(prim, gamma);
+            u[i][j] = PrimitiveToConservative(prim);
 
         }
     }
 
-    auto [dt, maxSpeed] = ComputeTimeStep(u , C , dx, dy, gamma); //the time steps
+    auto [dt, maxSpeed] = ComputeTimeStep(u , C , dx, dy); //the time steps
 
     double t = tStart;
     int counter =0;
     do {
 
-        auto [dt,maxSpeed] = ComputeTimeStep(u, C, dx, dy, gamma); 
+        auto [dt,maxSpeed] = ComputeTimeStep(u, C, dx, dy); 
         double ch = maxSpeed;
         t += dt;
         std::cout << "t= " << t << " dt= " << dt << " ch= "<< maxSpeed<<std::endl;
@@ -1136,7 +1217,7 @@ int main() {
         // Reconstruct left/right states in x-direction
         for (int i = 1; i < nxCells+3; ++i) {
             for (int j = 0; j < nyCells+4; ++j) {
-                v[i][j] = ConservativeToPrimitive(u[i][j],gamma);
+                v[i][j] = ConservativeToPrimitive(u[i][j]);
                 for (int k = 0; k < 9; ++k) {
                     double dPlus = v[i+1][j][k] - v[i][j][k];
                     double dMinus = v[i][j][k] - v[i-1][j][k];//calculate limiting with primitive
@@ -1160,8 +1241,8 @@ int main() {
         // Predictor Step: update uBar to half timestep
         for (int i = 1; i < nxCells+3; ++i) {
             for (int j = 1; j < nyCells+3; ++j) {
-                std::array<double,9> fluxLx = FluxDefX(uBarL_x[i][j], gamma,ch);
-                std::array<double,9> fluxRx = FluxDefX(uBarR_x[i][j], gamma,ch);
+                std::array<double,9> fluxLx = FluxDefX(uBarL_x[i][j],ch);
+                std::array<double,9> fluxRx = FluxDefX(uBarR_x[i][j],ch);
                 for (int k = 0; k < 9; ++k) {
                     uBarHalf_xL[i][j][k] = uBarL_x[i][j][k] - 0.5 * (dt / dx) * (fluxRx[k] - fluxLx[k]);
                     uBarHalf_xR[i][j][k] = uBarR_x[i][j][k] - 0.5 * (dt / dx) * (fluxRx[k] - fluxLx[k]);
@@ -1177,7 +1258,7 @@ int main() {
         // Compute fluxes in x directions
         for (int i = 1; i < nxCells+3; ++i) {
             for (int j = 1; j < nyCells+3; ++j) {
-                fluxX[i][j] = FluxHLLCX(uBarHalf_xR[i][j], uBarHalf_xL[i+1][j], gamma, maxSpeed);
+                fluxX[i][j] = FluxHLLCX(uBarHalf_xR[i][j], uBarHalf_xL[i+1][j], maxSpeed);
             }
         }
 
@@ -1200,7 +1281,7 @@ int main() {
         // Reconstruct bottom/top states in y-direction
         for (int i = 0; i < nxCells+4; ++i) {
             for (int j = 1; j < nyCells+3; ++j) {
-                v[i][j] = ConservativeToPrimitive(u[i][j],gamma);
+                v[i][j] = ConservativeToPrimitive(u[i][j]);
                 for (int k = 0; k < 9; ++k) {
                     double dPlus = v[i][j+1][k] - v[i][j][k];
                     double dMinus = v[i][j][k] - v[i][j-1][k];//calculate r with primitive
@@ -1224,8 +1305,8 @@ int main() {
         // Predictor Step: update uBar to half timestep
         for (int i = 1; i < nxCells+3; ++i) {
             for (int j = 1; j < nyCells+3; ++j) {
-                std::array<double,9> fluxBy = FluxDefY(uBarB_y[i][j], gamma,ch);
-                std::array<double,9> fluxTy = FluxDefY(uBarT_y[i][j], gamma,ch);
+                std::array<double,9> fluxBy = FluxDefY(uBarB_y[i][j], ch);
+                std::array<double,9> fluxTy = FluxDefY(uBarT_y[i][j], ch);
                 for (int k = 0; k < 9; ++k) {
                     uBarHalf_yB[i][j][k] = uBarB_y[i][j][k] - 0.5 * (dt / dy) * (fluxTy[k] - fluxBy[k]);
                     uBarHalf_yT[i][j][k] = uBarT_y[i][j][k] - 0.5 * (dt / dy) * (fluxTy[k] - fluxBy[k]);
@@ -1238,7 +1319,7 @@ int main() {
 
         for (int i = 1; i < nxCells+3; ++i) {
             for (int j = 1; j < nyCells+3; ++j) {
-                fluxY[i][j] = FluxHLLCY(uBarHalf_yT[i][j], uBarHalf_yB[i][j+1], gamma, maxSpeed);
+                fluxY[i][j] = FluxHLLCY(uBarHalf_yT[i][j], uBarHalf_yB[i][j+1], maxSpeed);
             }
         }
 
@@ -1275,7 +1356,7 @@ int main() {
 
             for(int j = 0; j < nyCells+4; j++) { 
                 for(int i = 0; i < nxCells+4; i++) {
-                    results[i][j] = ConservativeToPrimitive(u[i][j], gamma);
+                    results[i][j] = ConservativeToPrimitive(u[i][j]);
                 }
             }
 
@@ -1308,7 +1389,7 @@ int main() {
 
     for(int j = 0; j < nyCells+4; j++) { 
         for(int i = 0; i < nxCells+4; i++) {
-            results[i][j] = ConservativeToPrimitive(u[i][j], gamma);
+            results[i][j] = ConservativeToPrimitive(u[i][j]);
         }
     }
 
