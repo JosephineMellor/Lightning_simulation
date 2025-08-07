@@ -592,7 +592,74 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // }
 }
 
+// Update source terms
+array SourceTermsX(array u , double x, double dt){
+    array v = ConservativeToPrimative(u);
 
+    //start with density
+    array u1 = u;
+    array intermediate;
+    array k1;
+    array k2;
+    for(int i=0; i<u1.size(); i++){
+        intermediate[i] = u1[i] - 2*dt*u1[1]/x;
+    }
+    for(int i=0; i<u1.size(); i++){
+        k1[i] = - 2*dt*(intermediate[1])/x;
+    }
+    for(int i=0; i<u1.size(); i++){
+        k2[i] = -2*dt*(intermediate[1] + k1[1])/x;
+    }
+    for(int i=0; i<u1.size(); i++){
+        u1[i] = intermediate[i] + 0.5*(k1[i] + k2[1]);
+    }
+    double new_density = u1[0];
+
+    //update momentum
+    array u2 = u;
+    array k2int;
+    for(int i=0; i<u2.size(); i++){
+        intermediate[i] = u2[i] - 2*dt*u2[1]*u2[1]/u2[0];
+    }
+    for(int i=0; i<u2.size(); i++){
+        k1[i] = -2*dt*intermediate[1]*intermediate[1]/intermediate[0];
+    }
+    for(int i=0; i<u2.size(); i++){
+        k2int[i] = intermediate[i] + k1[i];
+    }
+    for(int i=0; i<u2.size(); i++){
+        k2[i] = -2*dt*k2int[1]*k2int[2]/k2int[0];
+    }
+    for(int i=0; i<u2.size(); i++){
+        u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+    }
+    double new_momentum = u2[1];
+
+    //update energy
+    array u3 = u;
+    for(int i=0; i<u3.size(); i++){
+        intermediate[i] = u3[i] - 2*dt*(u3[3] + v[3])*v[1]/x;
+    }
+    for(int i=0; i<u3.size(); i++){
+        k1[i] = -2*dt*(intermediate[3] + ConservativeToPrimative(intermediate)[3])*ConservativeToPrimative(intermediate)[1]/x;
+    }
+    for(int i=0; i<u3.size(); i++){
+        k2int[i] = intermediate[i] + k1[i];
+    }
+    for(int i=0; i<u3.size(); i++){
+        k1[i] = -2*dt*(k2int[3] + ConservativeToPrimative(k2int)[3])*ConservativeToPrimative(k2int)[1]/x;
+    }
+    for(int i=0; i<u3.size(); i++){
+        u3[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+    }
+    double new_energy = u3[3];
+
+    array update = u;
+    update[0] = new_density;
+    update[1] = new_momentum;
+    update[3] = new_energy;
+    return update;
+}
 
 std::vector<std::vector<std::array<double, 4> > > XthenY(std::vector<std::vector<std::array<double, 4> > > u , double dx , double dy , double dt , int nxCells , int nyCells , double x0 ,double x1 , double y0 ,double y1 ,double tStart , double tStop , double C,double omega ){
     applyBoundaryConditions(u, nxCells , nyCells);
