@@ -244,7 +244,7 @@ std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u )
     double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
 
     v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5 * B2;
-
+    v[4] = u[4] / (2.0-1) + 0.5*u[0]*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]); //energy
     return v;
 }
 std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
@@ -330,6 +330,8 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
     double p = pressure_ratio * (pressures[pressure_top_i] - pressures[pressure_bottom_i]) + pressures[pressure_bottom_i];
 
     v[4] = p;
+    v[4] = (u[4] - 0.5*v[0]*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]))*(2.0 -1);//pressure
+
     return v;
 }
 
@@ -405,6 +407,7 @@ double SoundSpeed(const std::array<double,9> u){
 
     //linear interpolate using our variables from before
     double sound_speed = BilinearInterpolation(ss_NE , ss_SE , ss_SW , ss_NW , density_ratio , pressure_ratio);  
+    sound_speed = std::sqrt(2.0 * prim[4] / rho);
     
     return sound_speed;
 }
