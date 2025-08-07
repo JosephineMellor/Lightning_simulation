@@ -409,37 +409,6 @@ double SoundSpeed(const std::array<double,8> u){
     return sound_speed;
 }
 
-
-//Primitive to Conservative
-
-std::array<double , 8> PrimitiveToConservative1(const std::array<double , 8>& u , double gamma){
-    std::array<double ,8> v;
-    v[0] = u[0]; //density
-    v[1] = u[0] * u[1]; //vx
-    v[2] = u[0] * u[2]; //vy
-    v[3] = u[0] * u[3]; //vz
-    v[5] = u[5]; //Bx
-    v[6] = u[6]; //By
-    v[7] = u[7]; //Bz
-    v[4] = u[4] / (gamma-1) + 0.5*u[0]*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]); //energy
-    return v;
-}
-
-//Conservative to Primative
-
-std::array<double, 8> ConservativeToPrimitive1(const std::array<double , 8>& u , double gamma){
-    std::array<double , 8> v;
-    v[0] = u[0];
-    v[1] = u[1] / u[0];
-    v[2] = u[2] / u[0];
-    v[3] = u[3] / u[0];
-    v[5] = u[5];
-    v[6] = u[6];
-    v[7] = u[7];
-    v[4] = (u[4] - 0.5*v[0]*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]))*(gamma -1);//pressure
-    return v;
-}
-
 std::array<double , 8> FluxDef(const std::array<double , 8>& u ){//conservative variables go into this function
     std::array<double , 8> v = ConservativeToPrimitive(u);
     std::array<double , 8> flux;
