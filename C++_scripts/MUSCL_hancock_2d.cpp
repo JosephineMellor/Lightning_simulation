@@ -622,28 +622,28 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u,
     // }
 
     // Bottom and Top boundaries, reflective
-    for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
-        u[i][0] = u[i][2];
-        u[i][1] = u[i][3];        // Bottom boundary
-        u[i][nyCells + 2] = u[i][nyCells];
-        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-        u[i][0][2] = -u[i][2][2]; 
-        u[i][0][6] = -u[i][2][6]; 
-        u[i][1][2] = -u[i][3][2]; 
-        u[i][1][6] = -u[i][3][6]; 
-        u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
-        u[i][nyCells + 2][6] = -u[i][nyCells][6]; 
-        u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
-        u[i][nyCells + 3][6] = -u[i][nyCells + 1][6]; 
-    }
+    // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
+    //     u[i][0] = u[i][2];
+    //     u[i][1] = u[i][3];        // Bottom boundary
+    //     u[i][nyCells + 2] = u[i][nyCells];
+    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+    //     u[i][0][2] = -u[i][2][2]; 
+    //     u[i][0][6] = -u[i][2][6]; 
+    //     u[i][1][2] = -u[i][3][2]; 
+    //     u[i][1][6] = -u[i][3][6]; 
+    //     u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
+    //     u[i][nyCells + 2][6] = -u[i][nyCells][6]; 
+    //     u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
+    //     u[i][nyCells + 3][6] = -u[i][nyCells + 1][6]; 
+    // }
 
     //bottom and top periodic
-    // for (int i = 0; i < nxCells + 2; ++i) {
-    //     u[i][0] = u[i][nyCells];      // Bottom boundary
-    //     u[i][1] = u[i][nyCells+1];    
-    //     u[i][nyCells + 2] = u[i][2];  // Top boundary
-    //     u[i][nyCells + 3] = u[i][3];  
-    // }
+    for (int i = 0; i < nxCells + 2; ++i) {
+        u[i][0] = u[i][nyCells];      // Bottom boundary
+        u[i][1] = u[i][nyCells+1];    
+        u[i][nyCells + 2] = u[i][2];  // Top boundary
+        u[i][nyCells + 3] = u[i][3];  
+    }
 
     //bottom and top transmissive
     // for (int i = 0; i < nxCells + 2; ++i) {
@@ -656,14 +656,14 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u,
 
 
 int main() { 
-    int nxCells = 128; 
+    int nxCells = 256; 
     int nyCells = 256;
     double x0 = 0.0;
     double x1 = 1.0;
-    double y0 = -1.0;
+    double y0 = 0.0;
     double y1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 12.0;
+    double tStop = 0.5;
     double C = 0.8;
     double gamma = 5.0 / 3.0;
     double dx = (x1 - x0) / nxCells; 
@@ -797,26 +797,26 @@ int main() {
 
 
             //Kelvin-Helmhotz
-            prim[0] = 1.0; // Density
-            prim[1] = 0.5*std::tanh(20*y); // Velocity
-            prim[2] = 0.01*std::sin(2.0*pi*x)*std::exp(-y*y/(0.01));
-            prim[3] = 0.0;
-            prim[4] = 1.0 / gamma; // pressure
-            prim[5] = 0.1*std::cos(pi/3.0); // magnetic field
-            prim[6] = 0.0;
-            prim[7] = 0.1*std::sin(pi/3.0); 
-            prim[8] = 0;
+            // prim[0] = 1.0; // Density
+            // prim[1] = 0.5*std::tanh(20*y); // Velocity
+            // prim[2] = 0.01*std::sin(2.0*pi*x)*std::exp(-y*y/(0.01));
+            // prim[3] = 0.0;
+            // prim[4] = 1.0 / gamma; // pressure
+            // prim[5] = 0.1*std::cos(pi/3.0); // magnetic field
+            // prim[6] = 0.0;
+            // prim[7] = 0.1*std::sin(pi/3.0); 
+            // prim[8] = 0;
 
             //Orszag-Tang
-            // prim[0] = gamma*gamma; // Density
-            // prim[1] = -std::sin(2.0*pi*y); // Velocity
-            // prim[2] = std::sin(2.0*pi*x);
-            // prim[3] = 0.0;
-            // prim[4] = gamma; // pressure
-            // prim[5] = -std::sin(2.0*pi*y); // magnetic field
-            // prim[6] = std::sin(4.0*pi*x);
-            // prim[7] = 0.0; 
-            // prim[8] = 0;
+            prim[0] = gamma*gamma; // Density
+            prim[1] = -std::sin(2.0*pi*y); // Velocity
+            prim[2] = std::sin(2.0*pi*x);
+            prim[3] = 0.0;
+            prim[4] = gamma; // pressure
+            prim[5] = -std::sin(2.0*pi*y); // magnetic field
+            prim[6] = std::sin(4.0*pi*x);
+            prim[7] = 0.0; 
+            prim[8] = 0;
 
 
             u[i][j] = PrimitiveToConservative(prim, gamma);
