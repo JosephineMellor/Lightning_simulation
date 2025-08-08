@@ -15,6 +15,8 @@ typedef std::vector<std::vector<double>> data_table;
 typedef std::array<double,3> array;
 typedef std::vector<std::array<double,3>> big_array;
 
+const double PI = 3.141592653589793;
+
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
     
@@ -402,7 +404,25 @@ double SoundSpeed(array u){
     return sound_speed;
 }
 
+//function to save data as spherically symmetric
+void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x0, double dx, int nCells, int index, int nTheta = 200) {
+    std::string filename = "wrapped_" + std::to_string(index) + ".dat";
+    std::ofstream out(filename);
+    // std::ofstream out("wrapped.dat");
+    for (int i = 0; i <= nCells+3; ++i) {
+        double r = x0 + (i - 1) * dx;
+        double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
 
+        for (int j = 0; j < nTheta; ++j) {
+            double theta = 2.0 * PI * j / nTheta;
+            double x = r * cos(theta);
+            double y = r * sin(theta);
+            out << x << " " << y << " " << rho << "\n";
+        }
+        out << "\n"; // Separate rings
+    }
+    out.close();
+}
 
 //define a general flux function 
 
@@ -655,25 +675,17 @@ int main() {
 
 
         // Output data at specific time steps
-        // if(t > 0.01*counter && t-dt <= 0.01*counter){
+        while (t >= 1e-5 * counter) {
+            big_array results(u.size());
 
-        //     big_array results(u.size());
+            for (int i = 0; i <= results.size() - 1; ++i) {
+                results[i] = ConservativeToPrimative(u[i]);
+            }
 
-        //     for(int i=0; i<= results.size() -1; ++i){
-        //         results[i] = ConservativeToPrimative(u[i]);
-        //     }
-
-
-        //     //output
-        //     std::string filename = "euler_" + std::to_string(counter) + ".dat";
-        //     std::ofstream output(filename);
-        //     for (int i = 1; i <= nCells; ++i) {
-        //         double x = x0 + (i - 1) * dx;
-        //         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
-        //     }
-        //     counter +=1;
-        //     std::cout<<counter<<std::endl;
-        // }
+            SaveWrappedData(results, x0, dx, nCells, counter);
+            std::cout << "Saved frame: " << counter << std::endl;
+            counter += 1;
+        }
                 
                
     } while (t < tStop);
@@ -696,5 +708,8 @@ int main() {
         double x = x0 + (i - 1) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
     }
+
+    //wrap data around the r=0 axis
+    //SaveWrappedData(results, x0, dx, nCells, counter);
     
 }
