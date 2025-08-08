@@ -636,8 +636,6 @@ array SourceTerms(array u , double x, double dt){
     double new_momentum_x = u2[1];
 
     //update momentum_y
-    array u2 = u;
-    array k2int;
     for(int i=0; i<u2.size(); i++){
         intermediate[i] = u2[i] - dt*u2[1]*u2[2]/u2[0];
     }
