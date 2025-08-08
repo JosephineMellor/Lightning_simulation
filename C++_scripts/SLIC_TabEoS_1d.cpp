@@ -547,24 +547,36 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
     return update;
 }
 
+void applyBoundaryConditions(big_array& u){
+    int n = u.size();
+    // ----- REFLECTIVE ------
+    // u[0] = u[1];
+    // u[n - 1] = u[n - 2];
+    // u[0][1] = -u[1][1];
+    // u[n - 1][1] = -u[n - 2][1];
+
+    // ----- TRANSMISSIVE -----
+    u[0] = u[1];
+    u[n - 1] = u[n - 2];
+}
 
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.012/std::pow(10,2.5);
+    double tStop = 0.000128;
     double C = 0.8;
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
-    std::vector<std::array<double,3>> u(nCells+2);
-    std::vector<std::array<double,3>> uPlus1(nCells+2);
-    std::vector<std::array<double,3>> flux(nCells+2);
-    std::vector<std::array<double,3>> uBarL(nCells+2);
-    std::vector<std::array<double,3>> uBarR(nCells+2);
-    std::vector<std::array<double,3>> uBarHalfL(nCells+2);
-    std::vector<std::array<double,3>> uBarHalfR(nCells+2);
+    big_array  u(nCells+2);
+    big_array  flux(nCells+2);
+    big_array  uBarL(nCells+2);
+    big_array  uBarR(nCells+2);
+    big_array  uBarHalfL(nCells+2);
+    big_array  uBarHalfR(nCells+2);
+    big_array  uPlus1(nCells + 2);
     double dx = (x1 - x0) / nCells; //the space steps 
     double time;
 
@@ -574,14 +586,14 @@ int main() {
         // x 0 is at point i=1/2
         double x = x0 + (i-0.5) * dx;
         std::array<double, 3> prim;
-        if(x <= 0.5) {
+        if(x <= 0.4) {
             prim[0] = 1; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 1000*std::pow(10,5); // Pressure
+            prim[2] = 1*std::pow(10,5); // Pressure
             } else {
-            prim[0] = 1; // Density
+            prim[0] = 0.125; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 0.01*std::pow(10,5); // Pressure
+            prim[2] = 0.1*std::pow(10,5); // Pressure
         }
 
         u[i] = PrimativeToConservative(prim);
@@ -601,10 +613,11 @@ int main() {
         t = t + dt;
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
+        // Update source terms
+        u = SourceTermUpdate(u,x0,dx,dt);
 
-        // Trasmissive boundary conditions
-        u[0] = u[1];
-        u[nCells + 1] = u[nCells];
+        // Apply boundary conditions
+        applyBoundaryConditions(u);
 
         //find ubar
 
@@ -642,12 +655,9 @@ int main() {
         }
 
         
-        //transmissive boundary conditions
-        uBarHalfL[0] = uBarHalfL[1];
-        uBarHalfL[nCells + 1] = uBarHalfL[nCells];
-
-        uBarHalfR[0] = uBarHalfR[1];
-        uBarHalfR[nCells + 1] = uBarHalfR[nCells];
+        // Apply boundary conditions
+        applyBoundaryConditions(uBarHalfL);
+        applyBoundaryConditions(uBarHalfR);
 
 
         for(int i = 0; i <= nCells+1; i++) { //Define the fluxes
