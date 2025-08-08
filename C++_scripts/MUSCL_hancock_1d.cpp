@@ -158,6 +158,17 @@ double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, doubl
     return y;
 }
 
+//update source terms
+// std::array<double, 3> MomentumUpdate(std::array<double , 8>u){
+//     double dt = 0.001;
+//     std::array<double , 8>uBar;
+//     int count;
+//     while(count < 100){
+//         for(int i=0; i<u.size() ; i++){
+//             uBar[i] = u[i] + dt ;
+//         }
+//     }
+// }
 std::array<double , 8> PrimitiveToConservative(const std::array<double , 8>& u ){
     //start with variables that dont require equation of state
     std::array<double ,8> v;
