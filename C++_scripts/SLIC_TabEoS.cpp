@@ -530,20 +530,20 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // ------ TRANSMISSIVE --------
 
     // Left and Right boundaries
-    for (int j = 0; j < nyCells + 4; ++j) {
-        u[0][j] = u[2][j];      // Left boundary: copy from first interior cell
-        u[1][j] = u[2][j];      // Left ghost cell
-        u[nxCells + 2][j] = u[nxCells + 1][j];  // Right ghost cell
-        u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
-    }
+    // for (int j = 0; j < nyCells + 4; ++j) {
+    //     u[0][j] = u[2][j];      // Left boundary: copy from first interior cell
+    //     u[1][j] = u[2][j];      // Left ghost cell
+    //     u[nxCells + 2][j] = u[nxCells + 1][j];  // Right ghost cell
+    //     u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
+    // }
 
     // Bottom and Top boundaries
-    for (int i = 0; i < nxCells + 4; ++i) {
-        u[i][0] = u[i][2];      // Bottom boundary: copy from first interior cell
-        u[i][1] = u[i][2];      // Bottom ghost cell
-        u[i][nyCells + 2] = u[i][nyCells + 1];  // Top ghost cell
-        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    }
+    // for (int i = 0; i < nxCells + 4; ++i) {
+    //     u[i][0] = u[i][2];      // Bottom boundary: copy from first interior cell
+    //     u[i][1] = u[i][2];      // Bottom ghost cell
+    //     u[i][nyCells + 2] = u[i][nyCells + 1];  // Top ghost cell
+    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+    // }
 
 
     // -------- PERIODIC --------
@@ -568,115 +568,123 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // ------ REFLECTIVE -------
 
     //left and right
-    // for (int j = 0; j < nyCells + 2; ++j) {//reflect in u_y 
-    //     u[0][j] = u[2][j];
-    //     u[1][j] = u[3][j];        // Bottom boundary
-    //     u[nyCells + 2][j] = u[nyCells][j];
-    //     u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
-    //     u[0][j][2] = -u[2][j][2]; 
-    //     u[1][j][2] = -u[3][j][2]; 
-    //     u[nyCells + 2][j][2] = -u[nyCells][j][2]; 
-    //     u[nyCells + 3][j][2] = -u[nyCells + 1][j][2]; 
-    // }
+    for (int j = 0; j < nyCells + 2; ++j) {//reflect in u_y 
+        u[0][j] = u[2][j];
+        u[1][j] = u[3][j];        // Bottom boundary
+        u[nyCells + 2][j] = u[nyCells][j];
+        u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
+        u[0][j][2] = -u[3][j][2]; 
+        u[1][j][2] = -u[2][j][2]; 
+        u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
+        u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
+    }
 
     // Bottom and Top boundaries
-    // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y
-    //     u[i][0] = u[i][2];
-    //     u[i][1] = u[i][3];        // Bottom boundary
-    //     u[i][nyCells + 2] = u[i][nyCells];
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    //     u[i][0][2] = -u[i][2][2]; 
-    //     u[i][1][2] = -u[i][3][2]; 
-    //     u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
-    //     u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
-    // }
+    for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y
+        u[i][0] = u[i][2];
+        u[i][1] = u[i][3];        // Bottom boundary
+        u[i][nyCells + 2] = u[i][nyCells];
+        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+        u[i][0][2] = -u[i][3][2]; 
+        u[i][1][2] = -u[i][2][2]; 
+        u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
+        u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
+    }
 }
 
 // Update source terms
-array SourceTerms(array u , double x, double dt){
-    array v = ConservativeToPrimative(u);
+std::vector<std::vector<array>> SourceTerms(std::vector<std::vector<array>> u , double x, double dt){
+    std::vector<std::vector<array>> update;
+    update.resize(u.size()+4, std::vector<std::array<double, 4> >(u[0].size() + 4));
+    for(int i = 0; i < u.size(); i++) { 
+        for(int j = 0; j < u[0].size(); j++) {
+            array v = ConservativeToPrimative(u[i][j]);
 
-    //start with density
-    array u1 = u;
-    array intermediate;
-    array k1;
-    array k2;
-    for(int i=0; i<u1.size(); i++){
-        intermediate[i] = u1[i] - 2*dt*u1[1]/x;
-    }
-    for(int i=0; i<u1.size(); i++){
-        k1[i] = - dt*(intermediate[1])/x;
-    }
-    for(int i=0; i<u1.size(); i++){
-        k2[i] = -dt*(intermediate[1] + k1[1])/x;
-    }
-    for(int i=0; i<u1.size(); i++){
-        u1[i] = intermediate[i] + 0.5*(k1[i] + k2[1]);
-    }
-    double new_density = u1[0];
+            //start with density
+            array u1 = u[i][j];
+            array intermediate;
+            array k1;
+            array k2;
+            for(int i=0; i<u1.size(); i++){
+                intermediate[i] = u1[i] - 2*dt*u1[1]/x;
+            }
+            for(int i=0; i<u1.size(); i++){
+                k1[i] = - dt*(intermediate[1])/x;
+            }
+            for(int i=0; i<u1.size(); i++){
+                k2[i] = -dt*(intermediate[1] + k1[1])/x;
+            }
+            for(int i=0; i<u1.size(); i++){
+                u1[i] = intermediate[i] + 0.5*(k1[i] + k2[1]);
+            }
+            double new_density = u1[0];
 
-    //update momentum_x
-    array u2 = u;
-    array k2int;
-    for(int i=0; i<u2.size(); i++){
-        intermediate[i] = u2[i] - dt*u2[1]*u2[1]/u2[0];
-    }
-    for(int i=0; i<u2.size(); i++){
-        k1[i] = -dt*intermediate[1]*intermediate[1]/intermediate[0];
-    }
-    for(int i=0; i<u2.size(); i++){
-        k2int[i] = intermediate[i] + k1[i];
-    }
-    for(int i=0; i<u2.size(); i++){
-        k2[i] = -dt*k2int[1]*k2int[1]/k2int[0];
-    }
-    for(int i=0; i<u2.size(); i++){
-        u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
-    }
-    double new_momentum_x = u2[1];
+            //update momentum_x
+            array u2 = u[i][j];
+            array k2int;
+            for(int i=0; i<u2.size(); i++){
+                intermediate[i] = u2[i] - dt*u2[1]*u2[1]/u2[0];
+            }
+            for(int i=0; i<u2.size(); i++){
+                k1[i] = -dt*intermediate[1]*intermediate[1]/intermediate[0];
+            }
+            for(int i=0; i<u2.size(); i++){
+                k2int[i] = intermediate[i] + k1[i];
+            }
+            for(int i=0; i<u2.size(); i++){
+                k2[i] = -dt*k2int[1]*k2int[1]/k2int[0];
+            }
+            for(int i=0; i<u2.size(); i++){
+                u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+            }
+            double new_momentum_x = u2[1];
 
-    //update momentum_y
-    for(int i=0; i<u2.size(); i++){
-        intermediate[i] = u2[i] - dt*u2[1]*u2[2]/u2[0];
-    }
-    for(int i=0; i<u2.size(); i++){
-        k1[i] = -dt*intermediate[1]*intermediate[2]/intermediate[0];
-    }
-    for(int i=0; i<u2.size(); i++){
-        k2int[i] = intermediate[i] + k1[i];
-    }
-    for(int i=0; i<u2.size(); i++){
-        k2[i] = -dt*k2int[1]*k2int[2]/k2int[0];
-    }
-    for(int i=0; i<u2.size(); i++){
-        u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
-    }
-    double new_momentum_y = u2[1];
+            //update momentum_y
+            u2 = u[i][j];
+            for(int i=0; i<u2.size(); i++){
+                intermediate[i] = u2[i] - dt*u2[1]*u2[2]/u2[0];
+            }
+            for(int i=0; i<u2.size(); i++){
+                k1[i] = -dt*intermediate[1]*intermediate[2]/intermediate[0];
+            }
+            for(int i=0; i<u2.size(); i++){
+                k2int[i] = intermediate[i] + k1[i];
+            }
+            for(int i=0; i<u2.size(); i++){
+                k2[i] = -dt*k2int[1]*k2int[2]/k2int[0];
+            }
+            for(int i=0; i<u2.size(); i++){
+                u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+            }
+            double new_momentum_y = u2[1];
 
-    //update energy
-    array u3 = u;
-    for(int i=0; i<u3.size(); i++){
-        intermediate[i] = u3[i] - dt*(u3[3] + v[3])*v[1]/x;
-    }
-    for(int i=0; i<u3.size(); i++){
-        k1[i] = -dt*(intermediate[3] + ConservativeToPrimative(intermediate)[3])*ConservativeToPrimative(intermediate)[1]/x;
-    }
-    for(int i=0; i<u3.size(); i++){
-        k2int[i] = intermediate[i] + k1[i];
-    }
-    for(int i=0; i<u3.size(); i++){
-        k1[i] = -dt*(k2int[3] + ConservativeToPrimative(k2int)[3])*ConservativeToPrimative(k2int)[1]/x;
-    }
-    for(int i=0; i<u3.size(); i++){
-        u3[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
-    }
-    double new_energy = u3[3];
+            //update energy
+            array u3 = u[i][j];
+            for(int i=0; i<u3.size(); i++){
+                intermediate[i] = u3[i] - dt*(u3[3] + v[3])*v[1]/x;
+            }
+            for(int i=0; i<u3.size(); i++){
+                k1[i] = -dt*(intermediate[3] + ConservativeToPrimative(intermediate)[3])*ConservativeToPrimative(intermediate)[1]/x;
+            }
+            for(int i=0; i<u3.size(); i++){
+                k2int[i] = intermediate[i] + k1[i];
+            }
+            for(int i=0; i<u3.size(); i++){
+                k1[i] = -dt*(k2int[3] + ConservativeToPrimative(k2int)[3])*ConservativeToPrimative(k2int)[1]/x;
+            }
+            for(int i=0; i<u3.size(); i++){
+                u3[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+            }
+            double new_energy = u3[3];
 
-    array update;
-    update[0] = new_density;
-    update[1] = new_momentum_x;
-    update[2] = new_momentum_y;
-    update[3] = new_energy;
+            
+            update[i][j][0] = new_density;
+            update[i][j][1] = new_momentum_x;
+            update[i][j][2] = new_momentum_y;
+            update[i][j][3] = new_energy;
+        }
+    }
+    
     return update;
 }
 
@@ -986,7 +994,7 @@ int main(){
     double y0 = 0.0;
     double y1 = 1.0;
     double tStart = 0.0;
-    double tStop = 0.035/std::pow(10,2.5);
+    double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double omega =0;
 
@@ -1005,29 +1013,17 @@ int main(){
             double y = y0 + (j - 1.5) * dy;
 
             
-            if ( x>0.5 && y>0.5) {
-                prim[0] = 5.99924;
-                prim[1] = 19.5975*std::pow(10,2.5);
-                prim[2] = 0*std::pow(10,2.5);
-                prim[3] = 460.894*1e5;  // pressure (p)
+            if ( x<=0.4) {
+                prim[0] = 1.0;
+                prim[1] = 0.0*std::pow(10,2.5);
+                prim[2] = 0.0*std::pow(10,2.5);
+                prim[3] = 1.0*1e5;  // pressure (p)
             } 
-            else if(x<=0.5 && y > 0.5) {
-                prim[0] = 5.99242;
-                prim[1] = -6.19633*std::pow(10,2.5);
-                prim[2] = 0*std::pow(10,2.5);
-                prim[3] = 46.0950*1e5;
-            }
-            else if(x<=0.5 && y<=0.5) {
-                prim[0] = 5.99242;
-                prim[1] = -6.19633*std::pow(10,2.5);
-                prim[2] = 0*std::pow(10,2.5);
-                prim[3] = 46.0950*1e5;
-            }
             else{
-                prim[0] = 5.99924;
-                prim[1] = 19.5975*std::pow(10,2.5);
-                prim[2] = 0*std::pow(10,2.5);
-                prim[3] = 460.894*1e5;
+                prim[0] = 0.125;
+                prim[1] = 0.0*std::pow(10,2.5);
+                prim[2] = 0.0*std::pow(10,2.5);
+                prim[3] = 0.1*1e5;
             }
 
             u[i][j] = PrimativeToConservative(prim);
@@ -1042,6 +1038,9 @@ int main(){
     do{
         dt = ComputeTimeStep(u,C,dx,dy);
         t +=dt;
+
+        // Update cylindrical source terms
+        
 
         std::cout << "t = "<< t<<" dt = "<< dt<< std::endl; 
         applyBoundaryConditions(u , nxCells , nyCells);
