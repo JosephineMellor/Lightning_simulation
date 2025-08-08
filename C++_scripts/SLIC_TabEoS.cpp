@@ -992,8 +992,6 @@ int main(){
 
     std::vector<std::vector<std::array<double, 4> > > u;
     u.resize(nxCells+4, std::vector<std::array<double, 4> >(nyCells + 4)); //set up u
-    std::vector<std::vector<std::array<double, 4> > > v;
-    v.resize(nxCells+4, std::vector<std::array<double, 4> >(nyCells + 4)); //set up v to check prim->conserv
 
     double dx = (x1 - x0) / nxCells;
     double dy = (y1 - y0) / nyCells;
@@ -1008,32 +1006,31 @@ int main(){
 
             
             if ( x>0.5 && y>0.5) {
-                prim[0] = 1.0;   // density (rho)
-                prim[1] = 0;   // x-velocity (u)
-                prim[2] = 0;   // y-velocity (v)
-                prim[3] = 0.01*1e5;   // pressure (p)
+                prim[0] = 5.99924;
+                prim[1] = 19.5975*std::pow(10,2.5);
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 460.894*1e5;  // pressure (p)
             } 
             else if(x<=0.5 && y > 0.5) {
-                prim[0] = 1.0;
-                prim[1] = 0;
-                prim[2] = 0;
-                prim[3] = 100*1e5;
+                prim[0] = 5.99242;
+                prim[1] = -6.19633*std::pow(10,2.5);
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 46.0950*1e5;
             }
             else if(x<=0.5 && y<=0.5) {
-                prim[0] = 1.0;
-                prim[1] = 0;
-                prim[2] = 0;
-                prim[3] = 100*1e5;
+                prim[0] = 5.99242;
+                prim[1] = -6.19633*std::pow(10,2.5);
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 46.0950*1e5;
             }
             else{
-                prim[0] = 1.0;
-                prim[1] = 0;
-                prim[2] = 0;
-                prim[3] = 0.01*1e5;
+                prim[0] = 5.99924;
+                prim[1] = 19.5975*std::pow(10,2.5);
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 460.894*1e5;
             }
 
             u[i][j] = PrimativeToConservative(prim);
-            v[i][j] = ConservativeToPrimative(u[i][j]);
         }
     }
 
