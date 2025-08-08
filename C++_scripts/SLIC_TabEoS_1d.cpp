@@ -13,6 +13,7 @@ typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
 typedef std::array<double,3> array;
+typedef std::vector<std::array<double,3>> big_array;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -443,7 +444,7 @@ array getFlux(array  x , array y, double dx , double dt){
     return FORCE_flux;
 }
 
-double computeTimeStep(const std::vector<std::array<double,3>>& u , double C, double dx, double gamma) {
+double computeTimeStep(const big_array& u , double C, double dx, double gamma) {
     double maxSpeed = 0.0;
 
     for (const auto& state : u) {
@@ -451,12 +452,13 @@ double computeTimeStep(const std::vector<std::array<double,3>>& u , double C, do
         double mom = state[1];
         double E = state[2];
 
-        double u_val = mom / rho;
-        double KE = 0.5 * rho * u_val * u_val;
-        double pressure = (gamma - 1.0) * (E - KE);
+        array prim = ConservativeToPrimative(state);
 
-        double sound_speed = std::sqrt(gamma * pressure / rho);
-        double speed = std::abs(u_val) + sound_speed;
+        double u = prim[1];
+        double pressure = prim[2];
+
+        double sound_speed = SoundSpeed(state);
+        double speed = std::abs(u) + sound_speed;
 
         if (speed > maxSpeed) {
             maxSpeed = speed;
