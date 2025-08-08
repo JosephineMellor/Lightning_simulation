@@ -469,13 +469,91 @@ double computeTimeStep(const big_array& u , double C, double dx) {
      return dt;
 }
 
+// Update source terms
+big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
+    big_array update(u.size());
+    for(int i = 0; i < u.size(); i++) { 
+    
+        array v = ConservativeToPrimative(u[i]);
+        double x = x0 + (i - 1.5) * dx;
+
+        //start with density
+        array u1 = u[i];
+        array intermediate;
+        array k1;
+        array k2;
+        for(int i=0; i<u1.size(); i++){
+            intermediate[i] = u1[i] - dt*u1[1]/x;
+        }
+        for(int i=0; i<u1.size(); i++){
+            k1[i] = - dt*(intermediate[1])/x;
+        }
+        for(int i=0; i<u1.size(); i++){
+            k2[i] = -dt*(intermediate[1] + k1[1])/x;
+        }
+        for(int i=0; i<u1.size(); i++){
+            u1[i] = intermediate[i] + 0.5*(k1[i] + k2[1]);
+        }
+        double new_density = u1[0];
+
+        //update momentum
+        array u2 = u[i];
+        array k2int;
+        for(int i=0; i<u2.size(); i++){
+            intermediate[i] = u2[i] - dt*u2[1]*u2[1]/u2[0];
+        }
+        for(int i=0; i<u2.size(); i++){
+            k1[i] = -dt*intermediate[1]*intermediate[1]/intermediate[0];
+        }
+        for(int i=0; i<u2.size(); i++){
+            k2int[i] = intermediate[i] + k1[i];
+        }
+        for(int i=0; i<u2.size(); i++){
+            k2[i] = -dt*k2int[1]*k2int[1]/k2int[0];
+        }
+        for(int i=0; i<u2.size(); i++){
+            u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+        }
+        double new_momentum_x = u2[1];
+
+        
+
+        //update energy
+        array u3 = u[i];
+        for(int i=0; i<u3.size(); i++){
+            intermediate[i] = u3[i] - dt*(u3[2] + v[2])*v[1]/x;
+        }
+        for(int i=0; i<u3.size(); i++){
+            k1[i] = -dt*(intermediate[2] + ConservativeToPrimative(intermediate)[2])*ConservativeToPrimative(intermediate)[1]/x;
+        }
+        for(int i=0; i<u3.size(); i++){
+            k2int[i] = intermediate[i] + k1[i];
+        }
+        for(int i=0; i<u3.size(); i++){
+            k1[i] = -dt*(k2int[2] + ConservativeToPrimative(k2int)[2])*ConservativeToPrimative(k2int)[1]/x;
+        }
+        for(int i=0; i<u3.size(); i++){
+            u3[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
+        }
+        double new_energy = u3[2];
+
+        
+        update[i][0] = new_density;
+        update[i][1] = new_momentum_x;
+        update[i][3] = new_energy;
+        
+    }
+    
+    return update;
+}
+
 
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.25/std::pow(10,2.5);
+    double tStop = 0.012/std::pow(10,2.5);
     double C = 0.8;
     double omega = 0;
 
@@ -499,11 +577,11 @@ int main() {
         if(x <= 0.5) {
             prim[0] = 1; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 1*std::pow(10,5); // Pressure
+            prim[2] = 1000*std::pow(10,5); // Pressure
             } else {
-            prim[0] = 0.125; // Density
+            prim[0] = 1; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 0.1*std::pow(10,5); // Pressure
+            prim[2] = 0.01*std::pow(10,5); // Pressure
         }
 
         u[i] = PrimativeToConservative(prim);
@@ -572,7 +650,7 @@ int main() {
         uBarHalfR[nCells + 1] = uBarHalfR[nCells];
 
 
-        for(int i = 0; i < nCells+1; i++) { //Define the fluxes
+        for(int i = 0; i <= nCells+1; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }

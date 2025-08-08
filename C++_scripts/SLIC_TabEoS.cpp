@@ -607,7 +607,7 @@ std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>>
             array k1;
             array k2;
             for(int i=0; i<u1.size(); i++){
-                intermediate[i] = u1[i] - 2*dt*u1[1]/x;
+                intermediate[i] = u1[i] - dt*u1[1]/x;
             }
             for(int i=0; i<u1.size(); i++){
                 k1[i] = - dt*(intermediate[1])/x;
