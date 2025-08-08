@@ -986,7 +986,7 @@ int main(){
     double y0 = 0.0;
     double y1 = 1.0;
     double tStart = 0.0;
-    double tStop = 0.012/std::pow(10,2.5);
+    double tStop = 0.035/std::pow(10,2.5);
     double C = 0.8;
     double omega =0;
 
@@ -1017,13 +1017,13 @@ int main(){
                 prim[0] = 1.0;
                 prim[1] = 0;
                 prim[2] = 0;
-                prim[3] = 1000*1e5;
+                prim[3] = 100*1e5;
             }
             else if(x<=0.5 && y<=0.5) {
                 prim[0] = 1.0;
                 prim[1] = 0;
                 prim[2] = 0;
-                prim[3] = 1000*1e5;
+                prim[3] = 100*1e5;
             }
             else{
                 prim[0] = 1.0;
@@ -1032,15 +1032,10 @@ int main(){
                 prim[3] = 0.01*1e5;
             }
 
-            std::cout<<"i= "<<i<<" j= "<<j<<std::endl;
             u[i][j] = PrimativeToConservative(prim);
             v[i][j] = ConservativeToPrimative(u[i][j]);
-            std::cout<<u[i][j][0]<<" "<<u[i][j][1]<<" "<<u[i][j][2]<<" "<<u[i][j][3]<<std::endl;
-            std::cout<<v[i][j][0]<<" "<<v[i][j][1]<<" "<<v[i][j][2]<<" "<<v[i][j][3]<<std::endl;
-            std::cout<<prim[0]<<" "<<prim[1]<<" "<<prim[2]<<" "<<prim[3]<<std::endl;
         }
     }
-    std::cout<<"finished loop!"<<std::endl;
 
     applyBoundaryConditions(u , nxCells , nyCells);
 
