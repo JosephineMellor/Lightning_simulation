@@ -456,7 +456,7 @@ array getFluxX(array x , array y , double dx , double dt){
     array FORCE_flux;
     
     for(int i=0; i<=3; ++i){
-        LF_flux[i] = (0.5*dx/dt)*(x[i] - y[i]) + 0.5*(f_1[i] + f_2[i]); // lax friedrichs flux
+        LF_flux[i] = (0.5*(dx/dt))*(x[i] - y[i]) + 0.5*(f_1[i] + f_2[i]); // lax friedrichs flux
         FORCE_flux[i] = 0.5 * (LF_flux[i] + RI_flux[i]); //force flux
     }
 

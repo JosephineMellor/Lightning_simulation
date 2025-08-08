@@ -496,10 +496,10 @@ int main() {
         // x 0 is at point i=1/2
         double x = x0 + (i-0.5) * dx;
         std::array<double, 3> prim;
-        if(x <= 0.25) {
+        if(x <= 0.5) {
             prim[0] = 1; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 1.0*std::pow(10,5); // Pressure
+            prim[2] = 1*std::pow(10,5); // Pressure
             } else {
             prim[0] = 0.125; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
@@ -523,8 +523,6 @@ int main() {
         t = t + dt;
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
-        //You may want to manually reduce dt if this would overshoot tStop
-        //Apply boundary conditions
 
         // Trasmissive boundary conditions
         u[0] = u[1];
@@ -537,14 +535,11 @@ int main() {
             for(int j=0; j<=2; ++j){
                 double DeltaPlus = u[i+1][j] - u[i][j];
                 double DeltaMinus = u[i][j] - u[i-1][j];
-                // std::cout<< DeltaMinus << " " << DeltaPlus << std::endl;
                 double r = DeltaMinus / (DeltaPlus  + 1e-8);
-                
                 double xi_L = 2.0*r/(1+r);
                 double xi_R = 2.0/(1+r);
                 double xi;
                 double Delta = 0.5*(1+omega)*DeltaMinus + 0.5*(1-omega)*DeltaPlus;
-                // std::cout << Delta << std::endl;
             
                 if(r<=0){ xi=0;}
                 else if(r>0 && r<=1){ xi=r;}
@@ -553,8 +548,6 @@ int main() {
                     
                 }
 
-                // xi = 0.2;
-                // std::cout << xi << " " << xi_R << " " << r <<  std::endl;
                 uBarL[i][j] = u[i][j] - 0.5 * xi * Delta;
                 uBarR[i][j] = u[i][j] + 0.5 * xi * Delta;
                 
@@ -571,7 +564,7 @@ int main() {
         }
 
         
-
+        //transmissive boundary conditions
         uBarHalfL[0] = uBarHalfL[1];
         uBarHalfL[nCells + 1] = uBarHalfL[nCells];
 
