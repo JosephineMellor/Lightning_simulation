@@ -475,7 +475,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.25;
+    double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double omega = 0;
 
@@ -498,12 +498,12 @@ int main() {
         std::array<double, 3> prim;
         if(x <= 0.25) {
             prim[0] = 1; // Density
-            prim[1] = 0; // Velocity
-            prim[2] = 1; // Pressure
+            prim[1] = 0*std::pow(10,2.5); // Velocity
+            prim[2] = 1.0*std::pow(10,5); // Pressure
             } else {
             prim[0] = 0.125; // Density
-            prim[1] = 0; // Velocity
-            prim[2] = 0.1; // Pressure
+            prim[1] = 0*std::pow(10,2.5); // Velocity
+            prim[2] = 0.1*std::pow(10,5); // Pressure
         }
 
         u[i] = PrimativeToConservative(prim);
