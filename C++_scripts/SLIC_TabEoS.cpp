@@ -593,12 +593,13 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
 }
 
 // Update source terms
-std::vector<std::vector<array>> SourceTerms(std::vector<std::vector<array>> u , double x, double dt){
+std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>> u , double x0,double dx, double dt){
     std::vector<std::vector<array>> update;
     update.resize(u.size()+4, std::vector<std::array<double, 4> >(u[0].size() + 4));
     for(int i = 0; i < u.size(); i++) { 
         for(int j = 0; j < u[0].size(); j++) {
             array v = ConservativeToPrimative(u[i][j]);
+            double x = x0 + (i - 1.5) * dx;
 
             //start with density
             array u1 = u[i][j];
@@ -989,12 +990,12 @@ std::vector<std::vector<std::array<double, 4> > > YthenX(std::vector<std::vector
 int main(){
     int nxCells = 100;
     int nyCells = 100;
-    double x0 = 0.0;
+    double x0 = -1.0;
     double x1 = 1.0;
-    double y0 = 0.0;
+    double y0 = -1.0;
     double y1 = 1.0;
     double tStart = 0.0;
-    double tStop = 0.25/std::pow(10,2.5);
+    double tStop = 0.00016048;
     double C = 0.8;
     double omega =0;
 
@@ -1013,7 +1014,7 @@ int main(){
             double y = y0 + (j - 1.5) * dy;
 
             
-            if ( x<=0.4) {
+            if ( std::sqrt(x*x + y*y)<=0.4) {
                 prim[0] = 1.0;
                 prim[1] = 0.0*std::pow(10,2.5);
                 prim[2] = 0.0*std::pow(10,2.5);
@@ -1040,7 +1041,7 @@ int main(){
         t +=dt;
 
         // Update cylindrical source terms
-        
+        u = SourceTermUpdate(u,x0, dx,dt);
 
         std::cout << "t = "<< t<<" dt = "<< dt<< std::endl; 
         applyBoundaryConditions(u , nxCells , nyCells);
