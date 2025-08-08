@@ -596,13 +596,13 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
 std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>> u , double x0,double dx, double dt){
     std::vector<std::vector<array>> update;
     update.resize(u.size()+4, std::vector<std::array<double, 4> >(u[0].size() + 4));
-    for(int i = 0; i < u.size(); i++) { 
+    for(int k = 0; k < u.size(); k++) { 
         for(int j = 0; j < u[0].size(); j++) {
-            array v = ConservativeToPrimative(u[i][j]);
-            double x = x0 + (i - 1.5) * dx;
+            array v = ConservativeToPrimative(u[k][j]);
+            double x = x0 + (k - 1.5) * dx;
 
             //start with density
-            array u1 = u[i][j];
+            array u1 = u[k][j];
             array intermediate;
             array k1;
             array k2;
@@ -616,12 +616,12 @@ std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>>
                 k2[i] = -dt*(intermediate[1] + k1[1])/x;
             }
             for(int i=0; i<u1.size(); i++){
-                u1[i] = intermediate[i] + 0.5*(k1[i] + k2[1]);
+                u1[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
             }
             double new_density = u1[0];
 
             //update momentum_x
-            array u2 = u[i][j];
+            array u2 = u[k][j];
             array k2int;
             for(int i=0; i<u2.size(); i++){
                 intermediate[i] = u2[i] - dt*u2[1]*u2[1]/u2[0];
@@ -641,7 +641,7 @@ std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>>
             double new_momentum_x = u2[1];
 
             //update momentum_y
-            u2 = u[i][j];
+            u2 = u[k][j];
             for(int i=0; i<u2.size(); i++){
                 intermediate[i] = u2[i] - dt*u2[1]*u2[2]/u2[0];
             }
@@ -657,10 +657,10 @@ std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>>
             for(int i=0; i<u2.size(); i++){
                 u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
             }
-            double new_momentum_y = u2[1];
+            double new_momentum_y = u2[2];
 
             //update energy
-            array u3 = u[i][j];
+            array u3 = u[k][j];
             for(int i=0; i<u3.size(); i++){
                 intermediate[i] = u3[i] - dt*(u3[3] + v[3])*v[1]/x;
             }
@@ -679,10 +679,10 @@ std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>>
             double new_energy = u3[3];
 
             
-            update[i][j][0] = new_density;
-            update[i][j][1] = new_momentum_x;
-            update[i][j][2] = new_momentum_y;
-            update[i][j][3] = new_energy;
+            update[k][j][0] = new_density;
+            update[k][j][1] = new_momentum_x;
+            update[k][j][2] = new_momentum_y;
+            update[k][j][3] = new_energy;
         }
     }
     
@@ -995,7 +995,7 @@ int main(){
     double y0 = -1.0;
     double y1 = 1.0;
     double tStart = 0.0;
-    double tStop = 0.00016048;
+    double tStop = 0.000206417;
     double C = 0.8;
     double omega =0;
 

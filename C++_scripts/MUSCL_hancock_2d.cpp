@@ -1367,17 +1367,17 @@ int main() {
 
 
             // Output the results
-            std::string filename = "MHD" + std::to_string(counter) + ".dat";
-            std::ofstream output(filename);
-            for(int j = 1; j < nyCells+4; j++) { 
-                for(int i = 1; i < nxCells+4; i++) {
-                    double x = x0 + (i - 1)*dx;
-                    double y = y0 + (j - 1)*dy;
-                    output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;
-                }
-                output<<std::endl;
-            }
-            counter +=1;
+            // std::string filename = "MHD" + std::to_string(counter) + ".dat";
+            // std::ofstream output(filename);
+            // for(int j = 1; j < nyCells+4; j++) { 
+            //     for(int i = 1; i < nxCells+4; i++) {
+            //         double x = x0 + (i - 1)*dx;
+            //         double y = y0 + (j - 1)*dy;
+            //         output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;
+            //     }
+            //     output<<std::endl;
+            // }
+            // counter +=1;
         }
 
     } while (t < tStop );
@@ -1400,7 +1400,7 @@ int main() {
 
 
     // Output the results
-    std::string filename = "MHD" + std::to_string(counter) + ".dat";
+    std::string filename = "MHD.dat";
     std::ofstream output(filename);
     for(int j = 1; j < nyCells+4; j++) { 
         for(int i = 1; i < nxCells+4; i++) {

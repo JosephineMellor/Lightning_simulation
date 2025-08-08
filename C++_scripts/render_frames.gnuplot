@@ -24,7 +24,7 @@ set zrange [0:1]
 
 set title "Density Evolution for Cylindrical Sod Test"
 
-do for [i=0:80] {
+do for [i=0:79] {
     splot sprintf('wrapped_%d.dat', i) using 1:2:3 with pm3d notitle
 }
 
