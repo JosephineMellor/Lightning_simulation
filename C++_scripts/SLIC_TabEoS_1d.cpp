@@ -443,57 +443,6 @@ array getFlux(array  x , array y, double dx , double dt){
     return FORCE_flux;
 }
 
-//using the minbee limiter
-double minbee(double deltaMinus , double deltaPlus , double omega = 0.0){
-    if (deltaPlus == 0.0) {
-        return 0.0;  
-    }
-    double r = deltaMinus / deltaPlus;
-    double xi;
-    if(r <=0){
-        double xi =0.0;
-    }
-    else if(r <=1.0){
-        xi = r;
-    }
-    else{
-        xi = std::min(1.0, 2.0/(1.0+r));
-    }
-    
-    double Delta = 0.5 * (1.0 + omega) * deltaMinus + 0.5 * (1.0 - omega) * deltaPlus;
-    
-    return xi * Delta;
-}
-
-std::array<double, 3> getxiDeltas(const std::array<double, 3>& u_left, const std::array<double, 3>& u_center,  const std::array<double, 3>& u_right) {
-    std::array<double, 3> slopes;
-    
-    for (int k = 0; k < 3; k++) {
-        double backward_diff = u_center[k] - u_left[k];
-        double forward_diff = u_right[k] - u_center[k];
-        slopes[k] = minbee(backward_diff, forward_diff);
-    }
-    
-    return slopes;
-}
-
-// this function takes in u and spits out uBarL and uBarR
-void getUbar(const std::vector<std::array<double,3>>& u, int i,  std::array<double, 3>& uBarL,  std::array<double, 3>& uBarR) {
-    
-    // Compute slopes using MinBee 
-    std::array<double, 3> xiDeltaL = getxiDeltas(u[i-1], u[i], u[i+1]);
-    std::array<double, 3> xiDeltaR = getxiDeltas(u[i], u[i+1], u[i+2]);
-    
-    // get the ubars but just replace the others with them
-    for (int k = 0; k < 3; k++) {
-        uBarL[k] = u[i][k] + 0.5 * xiDeltaL[k];      
-        uBarR[k] = u[i+1][k] - 0.5 * xiDeltaR[k];  
-    }
-}
-
-
-
-
 double computeTimeStep(const std::vector<std::array<double,3>>& u , double C, double dx, double gamma) {
     double maxSpeed = 0.0;
 
