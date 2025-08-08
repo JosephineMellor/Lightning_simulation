@@ -444,7 +444,7 @@ array getFlux(array  x , array y, double dx , double dt){
     return FORCE_flux;
 }
 
-double computeTimeStep(const big_array& u , double C, double dx, double gamma) {
+double computeTimeStep(const big_array& u , double C, double dx) {
     double maxSpeed = 0.0;
 
     for (const auto& state : u) {
@@ -477,7 +477,6 @@ int main() {
     double tStart = 0.0; //set the start and finish time steps the same
     double tStop = 0.25;
     double C = 0.8;
-    double gamma = 1.4;
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
@@ -515,13 +514,13 @@ int main() {
 
 
 
-    double dt = computeTimeStep(u , C , dx, gamma); //the time steps
+    double dt = computeTimeStep(u , C , dx); //the time steps
     for(int counter =1; counter<=20; ++counter){
         double t = tStart;
         do {
             // Compute the stable time step for this iteration
 
-            dt = computeTimeStep(u , C , dx, gamma); 
+            dt = computeTimeStep(u , C , dx); 
             t = t + dt;
             
 
