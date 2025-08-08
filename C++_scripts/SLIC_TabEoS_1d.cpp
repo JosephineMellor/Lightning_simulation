@@ -242,7 +242,7 @@ array PrimativeToConservative(array prim){
     //linear interpolate using our variables from before
     double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
 
-    consv[2] = energy*rho + 0.5*rho*(prim[1]*prim[1] + prim[2]*prim[2]);
+    consv[2] = energy*rho + 0.5*rho*(prim[1]*prim[1]);
     return consv;
 }
 array ConservativeToPrimative(array consv){
@@ -287,7 +287,7 @@ array ConservativeToPrimative(array consv){
     point2 =499;
     half;
     int pressure_index;
-    double e = (consv[2] - 0.5*rho*(prim[1]*prim[1] + prim[2]*prim[2])) / rho; //internal energy
+    double e = (consv[2] - 0.5*rho*(prim[1]*prim[1])) / rho; //internal energy
 
     //find the indices either side of our energy value in density top and bottom, they should be the same
     while(std::abs(point1-point2)>1){
@@ -507,117 +507,136 @@ int main() {
         }
 
         u[i] = PrimativeToConservative(prim);
+        array v = ConservativeToPrimative(u[i]);
+        std::cout<<prim[0]<<" "<<prim[1]<<" "<<prim[2]<<std::endl;
+        std::cout<<u[i][0]<<" "<<u[i][1]<<" "<<u[i][2]<<std::endl;
+        std::cout<<v[0]<<" "<<v[1]<<" "<<v[2]<<std::endl;
     }
-
-    
-    
-
-
 
     double dt = computeTimeStep(u , C , dx); //the time steps
-    for(int counter =1; counter<=20; ++counter){
-        double t = tStart;
-        do {
-            // Compute the stable time step for this iteration
+    double t = tStart;
+    int counter =0;
+    do {
+        // Compute the stable time step for this iteration
 
-            dt = computeTimeStep(u , C , dx); 
-            t = t + dt;
-            
+        dt = computeTimeStep(u , C , dx); 
+        t = t + dt;
+        std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
-            //You may want to manually reduce dt if this would overshoot tStop
-            //Apply boundary conditions
+        //You may want to manually reduce dt if this would overshoot tStop
+        //Apply boundary conditions
 
-            // Trasmissive boundary conditions
-            u[0] = u[1];
-            u[nCells + 1] = u[nCells];
+        // Trasmissive boundary conditions
+        u[0] = u[1];
+        u[nCells + 1] = u[nCells];
 
-            //find ubar
+        //find ubar
 
 
-            for(int i=1; i<=nCells; ++i){
-                for(int j=0; j<=2; ++j){
-                    double DeltaPlus = u[i+1][j] - u[i][j];
-                    double DeltaMinus = u[i][j] - u[i-1][j];
-                    // std::cout<< DeltaMinus << " " << DeltaPlus << std::endl;
-                    double r = DeltaMinus / (DeltaPlus  + 1e-8);
-                    
-                    double xi_L = 2.0*r/(1+r);
-                    double xi_R = 2.0/(1+r);
-                    double xi;
-                    double Delta = 0.5*(1+omega)*DeltaMinus + 0.5*(1-omega)*DeltaPlus;
-                    // std::cout << Delta << std::endl;
+        for(int i=1; i<=nCells; ++i){
+            for(int j=0; j<=2; ++j){
+                double DeltaPlus = u[i+1][j] - u[i][j];
+                double DeltaMinus = u[i][j] - u[i-1][j];
+                // std::cout<< DeltaMinus << " " << DeltaPlus << std::endl;
+                double r = DeltaMinus / (DeltaPlus  + 1e-8);
                 
-                    if(r<=0){ xi=0;}
-                    else if(r>0 && r<=1){ xi=r;}
-                    else{ 
-                        xi=std::fmin(1, xi_R);
-                        
-                    }
-
-                    // xi = 0.2;
-                    // std::cout << xi << " " << xi_R << " " << r <<  std::endl;
-                    uBarL[i][j] = u[i][j] - 0.5 * xi * Delta;
-                    uBarR[i][j] = u[i][j] + 0.5 * xi * Delta;
-                    
-                    
-                }
-            }
-
-            for(int i=1; i<=nCells; ++i){
-                for(int j=0; j<=2; ++j){
-                    uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
-                    uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
-                    
-                }
-            }
-
+                double xi_L = 2.0*r/(1+r);
+                double xi_R = 2.0/(1+r);
+                double xi;
+                double Delta = 0.5*(1+omega)*DeltaMinus + 0.5*(1-omega)*DeltaPlus;
+                // std::cout << Delta << std::endl;
             
-
-            uBarHalfL[0] = uBarHalfL[1];
-            uBarHalfL[nCells + 1] = uBarHalfL[nCells];
-
-            uBarHalfR[0] = uBarHalfR[1];
-            uBarHalfR[nCells + 1] = uBarHalfR[nCells];
-
-
-            for(int i = 0; i < nCells+1; i++) { //Define the fluxes
-                // flux[i] corresponds to cell i+1/2 
-                flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
-            }
-
-            //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
-
-            for(int i = 1; i <= nCells+1; i++) { //Update the data
-                for(int j=0; j<=2; ++j){
-                    uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
+                if(r<=0){ xi=0;}
+                else if(r>0 && r<=1){ xi=r;}
+                else{ 
+                    xi=std::fmin(1, xi_R);
+                    
                 }
+
+                // xi = 0.2;
+                // std::cout << xi << " " << xi_R << " " << r <<  std::endl;
+                uBarL[i][j] = u[i][j] - 0.5 * xi * Delta;
+                uBarR[i][j] = u[i][j] + 0.5 * xi * Delta;
+                
+                
             }
+        }
+
+        for(int i=1; i<=nCells; ++i){
+            for(int j=0; j<=2; ++j){
+                uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
+                uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
+                
+            }
+        }
+
         
-            // Now replace u with the updated data for the next time step
 
-            
-            u = uPlus1;
-        } while (t < tStop/(21-counter));
-        time = tStop/(21-counter);
-        std::cout <<time << std::endl;
+        uBarHalfL[0] = uBarHalfL[1];
+        uBarHalfL[nCells + 1] = uBarHalfL[nCells];
 
-        //still need to convert it back to primitive
+        uBarHalfR[0] = uBarHalfR[1];
+        uBarHalfR[nCells + 1] = uBarHalfR[nCells];
 
-        //define final results
 
-        std::vector<std::array<double,3>> results(nCells+2);
-
-        for(int i=0; i<= results.size() -1; ++i){
-            results[i] = ConservativeToPrimative(u[i]);
+        for(int i = 0; i < nCells+1; i++) { //Define the fluxes
+            // flux[i] corresponds to cell i+1/2 
+            flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }
 
+        //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
-        //output
-        std::string filename = "euler_" + std::to_string(counter) + ".dat";
-        std::ofstream output(filename);
-        for (int i = 1; i <= nCells; ++i) {
-            double x = x0 + (i - 1) * dx;
-            output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
+        for(int i = 1; i <= nCells+1; i++) { //Update the data
+            for(int j=0; j<=2; ++j){
+                uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
+            }
         }
+    
+        // Now replace u with the updated data for the next time step
+        u = uPlus1;
+
+
+        // Output data at specific time steps
+        // if(t > 0.01*counter && t-dt <= 0.01*counter){
+
+        //     big_array results(nCells+2);
+
+        //     for(int i=0; i<= results.size() -1; ++i){
+        //         results[i] = ConservativeToPrimative(u[i]);
+        //     }
+
+
+        //     //output
+        //     std::string filename = "euler_" + std::to_string(counter) + ".dat";
+        //     std::ofstream output(filename);
+        //     for (int i = 1; i <= nCells; ++i) {
+        //         double x = x0 + (i - 1) * dx;
+        //         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
+        //     }
+        //     counter +=1;
+        //     std::cout<<counter<<std::endl;
+        // }
+                
+               
+    } while (t < tStop);
+
+    //still need to convert it back to primitive
+
+    //define final results
+
+    big_array results(nCells+2);
+
+    for(int i=0; i<= results.size() -1; ++i){
+        results[i] = ConservativeToPrimative(u[i]);
     }
+
+
+    //output
+    std::string filename = "euler.dat";
+    std::ofstream output(filename);
+    for (int i = 1; i <= nCells; ++i) {
+        double x = x0 + (i - 1) * dx;
+        output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
+    }
+    
 }
