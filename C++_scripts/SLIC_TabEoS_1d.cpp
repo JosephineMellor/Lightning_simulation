@@ -405,7 +405,7 @@ double SoundSpeed(array u){
 
 //define a general flux function 
 
-array flux_def(array x, double gamma){
+array flux_def(array x){
     array flux;
     array y = ConservativeToPrimative(x);
     double rho = x[0];
@@ -421,19 +421,19 @@ array flux_def(array x, double gamma){
 //define a function to get the flux x is ui and y is ui+1 they are both arrays of length 3
 //it will spit out an array of size 3 as well give each variable their flux
 
-std::array<double, 3>  getFlux(std::array<double, 3>  x , std::array<double, 3>  y, double dx , double dt,double gamma){
+array getFlux(array  x , array y, double dx , double dt){
     //impliment general flux function 
-    std::array<double, 3>  f_1 = flux_def(x, gamma); //f(ui)
-    std::array<double, 3>  f_2 = flux_def(y, gamma); //f(i+1)
-    std::array<double, 3>  uPlusHalf; //u_{i+1/2}
+    array  f_1 = flux_def(x); //f(ui)
+    array  f_2 = flux_def(y); //f(i+1)
+    array  uPlusHalf; //u_{i+1/2}
 
     for(int i=0; i<=2; ++i){
         uPlusHalf[i] = 0.5*(x[i] + y[i]) - 0.5*(dt/dx)*(f_2[i] - f_1[i]);
     }
 
-    std::array<double, 3> RI_flux = flux_def(uPlusHalf, gamma); //richtmyer flux
-    std::array<double, 3> LF_flux; //set up 3 length array for LF flux
-    std::array<double, 3> FORCE_flux; //set up 3 length array for FORCE
+    array RI_flux = flux_def(uPlusHalf); //richtmyer flux
+    array LF_flux; //set up 3 length array for LF flux
+    array FORCE_flux; //set up 3 length array for FORCE
 
     for (int i=0; i<=2; ++i) {
         LF_flux[i] = (0.5 * (dx/dt) * (x[i] - y[i])) + 0.5 * (f_1[i] + f_2[i]);
@@ -615,8 +615,8 @@ int main() {
 
             for(int i=1; i<=nCells; ++i){
                 for(int j=0; j<=2; ++j){
-                    uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] , gamma)[j]-flux_def(uBarL[i] , gamma)[j]);
-                    uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] , gamma)[j]-flux_def(uBarL[i] , gamma)[j]);
+                    uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
+                    uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
                     
                 }
             }
@@ -632,7 +632,7 @@ int main() {
 
             for(int i = 0; i < nCells+1; i++) { //Define the fluxes
                 // flux[i] corresponds to cell i+1/2 
-                flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt, gamma);
+                flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
             }
 
             //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
