@@ -556,8 +556,13 @@ void applyBoundaryConditions(big_array& u){
     // u[n - 1][1] = -u[n - 2][1];
 
     // ----- TRANSMISSIVE -----
-    u[0] = u[1];
-    u[n - 1] = u[n - 2];
+    u[0] = u[3];
+    u[1] = u[2];
+    u[n - 1] = u[n - 4];
+    u[n - 2] = u[n - 3];
+
+    // u[0] = u[1];
+    // u[n - 1] = u[n - 2];
 }
 
 int main() { 
@@ -565,18 +570,18 @@ int main() {
     double x0 = 0.0;
     double x1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.000128;
+    double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
-    big_array  u(nCells+2);
-    big_array  flux(nCells+2);
-    big_array  uBarL(nCells+2);
-    big_array  uBarR(nCells+2);
-    big_array  uBarHalfL(nCells+2);
-    big_array  uBarHalfR(nCells+2);
-    big_array  uPlus1(nCells + 2);
+    big_array  u(nCells+4);
+    big_array  flux(u.size());
+    big_array  uBarL(u.size());
+    big_array  uBarR(u.size());
+    big_array  uBarHalfL(u.size());
+    big_array  uBarHalfR(u.size());
+    big_array  uPlus1(u.size());
     double dx = (x1 - x0) / nCells; //the space steps 
     double time;
 
@@ -614,7 +619,7 @@ int main() {
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
         // Update source terms
-        u = SourceTermUpdate(u,x0,dx,dt);
+        // u = SourceTermUpdate(u,x0,dx,dt);
 
         // Apply boundary conditions
         applyBoundaryConditions(u);
@@ -622,7 +627,7 @@ int main() {
         //find ubar
 
 
-        for(int i=1; i<=nCells; ++i){
+        for(int i=1; i<=nCells+2; ++i){
             for(int j=0; j<=2; ++j){
                 double DeltaPlus = u[i+1][j] - u[i][j];
                 double DeltaMinus = u[i][j] - u[i-1][j];
@@ -646,7 +651,7 @@ int main() {
             }
         }
 
-        for(int i=1; i<=nCells; ++i){
+        for(int i=1; i<=nCells+2; ++i){
             for(int j=0; j<=2; ++j){
                 uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
                 uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
@@ -660,14 +665,14 @@ int main() {
         applyBoundaryConditions(uBarHalfR);
 
 
-        for(int i = 0; i <= nCells+1; i++) { //Define the fluxes
+        for(int i = 0; i <= nCells+3; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }
 
         //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
-        for(int i = 1; i <= nCells+1; i++) { //Update the data
+        for(int i = 1; i <= nCells+3; i++) { //Update the data
             for(int j=0; j<=2; ++j){
                 uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
             }
@@ -680,7 +685,7 @@ int main() {
         // Output data at specific time steps
         // if(t > 0.01*counter && t-dt <= 0.01*counter){
 
-        //     big_array results(nCells+2);
+        //     big_array results(u.size());
 
         //     for(int i=0; i<= results.size() -1; ++i){
         //         results[i] = ConservativeToPrimative(u[i]);
@@ -705,7 +710,7 @@ int main() {
 
     //define final results
 
-    big_array results(nCells+2);
+    big_array results(u.size());
 
     for(int i=0; i<= results.size() -1; ++i){
         results[i] = ConservativeToPrimative(u[i]);
@@ -715,7 +720,7 @@ int main() {
     //output
     std::string filename = "euler.dat";
     std::ofstream output(filename);
-    for (int i = 1; i <= nCells; ++i) {
+    for (int i = 0; i <= nCells+3; ++i) {
         double x = x0 + (i - 1) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
     }
