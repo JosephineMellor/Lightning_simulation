@@ -946,15 +946,10 @@ int main(){
                 prim[3] = 0.01*1e5;
             }
 
-            std::cout<<"i= "<<i<<" j= "<<j<<std::endl;
             u[i][j] = PrimativeToConservative(prim);
             v[i][j] = ConservativeToPrimative(u[i][j]);
-            std::cout<<u[i][j][0]<<" "<<u[i][j][1]<<" "<<u[i][j][2]<<" "<<u[i][j][3]<<std::endl;
-            std::cout<<v[i][j][0]<<" "<<v[i][j][1]<<" "<<v[i][j][2]<<" "<<v[i][j][3]<<std::endl;
-            std::cout<<prim[0]<<" "<<prim[1]<<" "<<prim[2]<<" "<<prim[3]<<std::endl;
         }
     }
-    std::cout<<"finished loop!"<<std::endl;
 
     applyBoundaryConditions(u , nxCells , nyCells);
 
