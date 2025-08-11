@@ -1200,6 +1200,10 @@ int main() {
 
 
             u[i][j] = PrimitiveToConservative(prim);
+            std::array<double,9> v = ConservativeToPrimitive(u[i][j]);
+            std::cout<<"prim "<<prim[4]<<std::endl;
+            std::cout<<"conserv "<<u[i][j][4]<<std::endl;
+            std::cout<<"prim "<<v[4]<<std::endl;
 
         }
     }
