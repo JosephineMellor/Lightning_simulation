@@ -12,8 +12,8 @@
 typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
-typedef std::array<double,3> array;
-typedef std::vector<std::array<double,3>> big_array;
+typedef std::array<double,8> array;
+typedef std::vector<std::array<double,8>> big_array;
 
 const double PI = 3.141592653589793;
 
@@ -775,9 +775,7 @@ int main() {
         t = t + dt;
         std::cout<<"t= "<< t<< " dt= "<< dt<< std::endl;
 
-        // Trasmissive boundary conditions
-        u[0] = u[1];
-        u[nCells + 1] = u[nCells];
+        applyBoundaryConditions(u);
 
         //find ubar
 
@@ -814,11 +812,8 @@ int main() {
             }
         }
         
-        uBarHalfL[0] = uBarHalfL[1];
-        uBarHalfL[nCells + 1] = uBarHalfL[nCells];
-
-        uBarHalfR[0] = uBarHalfR[1];
-        uBarHalfR[nCells + 1] = uBarHalfR[nCells];
+        applyBoundaryConditions(uBarHalfL);
+        applyBoundaryConditions(uBarHalfR);
 
         for(int i = 0; i < u.size() - 1; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
