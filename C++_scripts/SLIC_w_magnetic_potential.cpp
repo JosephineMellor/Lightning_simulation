@@ -578,7 +578,7 @@ void ThomasAlorithm(const std::vector<double>& a, std::vector<double>& b,const s
 }
 
 //solve the poisson equation for magnetic potential
-std::vector<double> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 22708, double beta = 1294530, double gamma = 10847100, double I0 = 106405){
+std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 22708, double beta = 1294530, double gamma = 10847100, double I0 = 106405){
     //set up initial data for current density with current I(t)
     double I = I0*(std::exp(-alpha * t) - std::exp(-beta * t))*(1 - std::exp(-gamma * t))*(1 - std::exp(-gamma * t));
     std::vector<double> J(nCells);
@@ -612,7 +612,7 @@ std::vector<double> SolvePotential(double t,  double x0, double dx, double nCell
     std::vector<double> A(nCells);
     A = d;
 
-    return A;
+    return {A,J};
 }
 
 //use finite difference to retrive the magnetic feild from it's potential using central differences
@@ -632,7 +632,13 @@ std::vector<double> MagneticFeild(std::vector<double> A, double dx){
 }
 
 //use euler method to update momentum
-big_array momentumUpdate(big_array u, std::vector<double> J , std::vector<double> B, double x0, double dx, double dt){
+big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt){
+    // std::vector<double> A(u.size());
+    // std::vector<double> J(u.size());
+    auto [A,J] = SolvePotential(t, x0, dx, u.size());
+    std::vector<double> B(u.size());
+    B = MagneticFeild(A,dx);
+
     big_array update(u.size());
     update = u;
     std::vector<double> cross(u.size());
@@ -655,7 +661,11 @@ big_array momentumUpdate(big_array u, std::vector<double> J , std::vector<double
 }
 
 //use euler method to update energy
-big_array energyUpdate(big_array u, std::vector<double> J , std::vector<double> B, double x0, double dx, double dt){
+big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
+    auto [A,J] = SolvePotential(t, x0, dx, u.size());
+    std::vector<double> B(u.size());
+    B = MagneticFeild(A,dx);
+
     big_array update(u.size());
     update = u;
     std::vector<double> cross(u.size());
@@ -803,6 +813,10 @@ int main() {
             std::cout << "Saved frame: " << counter << std::endl;
             counter += 1;
         }
+
+        //update resistive source terms
+        u = momentumUpdate(u, x0, dx, t, dt);
+        u = energyUpdate(u, x0, dx, t, dt);
                 
                
     } while (t < tStop);
