@@ -244,7 +244,6 @@ std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u )
     double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
 
     v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5 * B2;
-    v[4] = u[4] / (2.0-1) + 0.5*u[0]*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]); //energy
     return v;
 }
 std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
@@ -296,7 +295,7 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
     point2 =499;
     half;
     int pressure_index;
-    double e = (u[3] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
+    double e = (u[4] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
 
     //find the indices either side of our energy value in density top and bottom, they should be the same
     while(std::abs(point1-point2)>1){
@@ -330,8 +329,6 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
     double p = pressure_ratio * (pressures[pressure_top_i] - pressures[pressure_bottom_i]) + pressures[pressure_bottom_i];
 
     v[4] = p;
-    v[4] = (u[4] - 0.5*v[0]*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]))*(2.0 -1);//pressure
-
     return v;
 }
 
@@ -371,10 +368,10 @@ double SoundSpeed(const std::array<double,9> u){
 
     //find our index for pressure also with linear bisection
     point1 =0;
-    point2 =500;
+    point2 =499;
     half;
     int pressure_index;
-    double p = prim[3];
+    double p = prim[4];
     while(std::abs(point1-point2)>1){
         half = floor((point1+point2)/2);
         if(p > pressures[half]){
@@ -407,7 +404,7 @@ double SoundSpeed(const std::array<double,9> u){
 
     //linear interpolate using our variables from before
     double sound_speed = BilinearInterpolation(ss_NE , ss_SE , ss_SW , ss_NW , density_ratio , pressure_ratio);  
-    sound_speed = std::sqrt(2.0 * prim[4] / rho);
+    // sound_speed = std::sqrt(2.0 * prim[4] / rho);
     
     return sound_speed;
 }
@@ -466,21 +463,17 @@ std::tuple <double, double > ComputeTimeStep(const std::vector<std::vector<std::
             double u_x = mom_x / rho;
             double u_y = mom_y / rho;
             double u_z = mom_z / rho;
-            double intermediate = 0.5 * rho *( u_x * u_x + u_y*u_y + u_z*u_z) + 0.5*(Bx*Bx + By*By + Bz*Bz);
             double BmagSquared = Bx*Bx + By*By + Bz*Bz;
             double pressure = v[4];
-
-            double alfven_speed = std::abs(Bx) / std::sqrt(rho);
-            double slow_ma_speed = std::sqrt( 0.5*(sound_speed*sound_speed + (BmagSquared/rho) - std::sqrt((sound_speed*sound_speed + BmagSquared/rho)*(sound_speed*sound_speed + BmagSquared/rho) - 4.0*sound_speed*sound_speed*Bx*Bx / rho)));
             
             // fast speed in x-direction
-            double fast_ma_speed_x = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bx*Bx / rho)));
+            double fast_ma_speed_x = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(std::pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bx*Bx / rho)));
 
             // fast speed in y-direction
-            double fast_ma_speed_y = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * By*By / rho)));
+            double fast_ma_speed_y = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(std::pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * By*By / rho)));
             
             // fast speed in z-direction
-            double fast_ma_speed_z = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bz*Bz / rho)));
+            double fast_ma_speed_z = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(std::pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bz*Bz / rho)));
             
             double speedx = std::abs(u_x) + fast_ma_speed_x;
             double speedy = std::abs(u_y) + fast_ma_speed_y;
@@ -537,7 +530,7 @@ std::tuple<double,double> speedsx( const std::array<double , 9>&x ,  double BxTi
     double pT = p + 0.5*B2;
 
     //find the sound speed
-    double cs2 = SoundSpeed(x);
+    double cs2 = SoundSpeed(x)*SoundSpeed(x);
 
     //find the fast speed
     double cfa2 = 0.5*(cs2 + B2/rho + std::sqrt((cs2 + B2/rho)*(cs2 + B2/rho) - 4.0*cs2*Bx*Bx/rho));
@@ -594,7 +587,7 @@ std::tuple<double,double> speedsy( const std::array<double , 9>&x , double ByTil
     double pT = p + 0.5*B2;
 
     //calculate sound speed
-    double cs2 = SoundSpeed(x);
+    double cs2 = SoundSpeed(x)*SoundSpeed(x);
 
     //find the fast speed
     double cfa2 = 0.5*(cs2 + B2/rho + std::sqrt((cs2 + B2/rho)*(cs2 + B2/rho) - 4.0*cs2*By*By/rho));
@@ -986,69 +979,84 @@ std::array<double , 9> FluxHLLY(const std::array<double , 9>&x , const std::arra
 }
 
 void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u, int nxCells, int nyCells) {
-    // Left and Right boundaries periodic
-    // for (int j = 0; j < nyCells + 2; ++j) {
+    int n = u.size();
+    int m = u[0].size();
+
+    // ------ TRANSMISSIVE --------
+    for(int i =0; i<n; i++){
+        u[0][i] = u[3][i];
+        u[1][i] = u[2][i];
+        u[n - 1][i] = u[n - 4][i];
+        u[n - 2][i] = u[n - 3][i];
+    }
+    for(int j =0; j<m; j++){
+        u[j][0] = u[j][3];
+        u[j][1] = u[j][2];
+        u[j][m - 1] = u[j][m - 4];
+        u[j][m - 2] = u[j][m - 3];
+    }
+    
+
+
+    // -------- PERIODIC --------
+
+    //left and right
+    // for (int j = 0; j < nyCells + 4; ++j) {
     //     u[0][j] = u[nxCells][j]; 
     //     u[1][j] = u[nxCells+1][j];      // Left boundary
     //     u[nxCells + 2][j] = u[2][j]; 
     //     u[nxCells + 3][j] = u[3][j];  // Right boundary
     // }
 
-    // Left and Right boundaries transmissive
-    for (int j = 0; j < nyCells + 2; ++j) {
-        u[0][j] = u[2][j]; 
-        u[1][j] = u[3][j];      // Left boundary
-        u[nxCells + 2][j] = u[nxCells][j]; 
-        u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
-    }
-
-    // Bottom and Top boundaries, reflective
-    // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
-    //     u[i][0] = u[i][2];
-    //     u[i][1] = u[i][3];        // Bottom boundary
-    //     u[i][nyCells + 2] = u[i][nyCells];
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    //     u[i][0][2] = -u[i][2][2]; 
-    //     u[i][0][6] = -u[i][2][6]; 
-    //     u[i][1][2] = -u[i][3][2]; 
-    //     u[i][1][6] = -u[i][3][6]; 
-    //     u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
-    //     u[i][nyCells + 2][6] = -u[i][nyCells][6]; 
-    //     u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
-    //     u[i][nyCells + 3][6] = -u[i][nyCells + 1][6]; 
-    // }
-
-    //bottom and top periodic
-    // for (int i = 0; i < nxCells + 2; ++i) {
+    //bottom and top
+    // for (int i = 0; i < nxCells + 4; ++i) {
     //     u[i][0] = u[i][nyCells];      // Bottom boundary
     //     u[i][1] = u[i][nyCells+1];    
     //     u[i][nyCells + 2] = u[i][2];  // Top boundary
     //     u[i][nyCells + 3] = u[i][3];  
     // }
 
-    //bottom and top transmissive
-    for (int i = 0; i < nxCells + 2; ++i) {
-        u[i][0] = u[i][2];      // Bottom boundary
-        u[i][1] = u[i][3];    
-        u[i][nyCells + 2] = u[i][nyCells];  // Top boundary
-        u[i][nyCells + 3] = u[i][nyCells + 1];  
-    }
+
+    // ------ REFLECTIVE -------
+
+    //left and right
+    // for (int j = 0; j < nyCells + 4; ++j) {//reflect in u_y 
+    //     u[0][j] = u[2][j];
+    //     u[1][j] = u[3][j];        // Bottom boundary
+    //     u[nyCells + 2][j] = u[nyCells][j];
+    //     u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
+    //     u[0][j][2] = -u[3][j][2]; 
+    //     u[1][j][2] = -u[2][j][2]; 
+    //     u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
+    //     u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
+    // }
+
+    // // // Bottom and Top boundaries
+    // for (int i = 0; i < nxCells + 4; ++i) {//reflect in u_y
+    //     u[i][0] = u[i][2];
+    //     u[i][1] = u[i][3];        // Bottom boundary
+    //     u[i][nyCells + 2] = u[i][nyCells];
+    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+    //     u[i][0][2] = -u[i][3][2]; 
+    //     u[i][1][2] = -u[i][2][2]; 
+    //     u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
+    //     u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
+    // }
 }
 
 
 int main() { 
-    int nxCells = 800; 
-    int nyCells = 800;
+    int nxCells = 100; 
+    int nyCells = 100;
     double x0 = 0.0;
-    double x1 = 800.0;
+    double x1 = 1.0;
     double y0 = 0.0;
-    double y1 = 800.0;
+    double y1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 80;
+    double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double dx = (x1 - x0) / nxCells; 
     double dy = (y1 - y0) / nyCells;
-    const double pi = 3.14159265358979323846;
 
     std::vector<std::vector<std::array<double, 9> > > u;
     u.resize(nxCells+4, std::vector<std::array<double, 9> >(nyCells + 4)); //set up u
@@ -1104,44 +1112,44 @@ int main() {
             std::array<double, 9> prim;
 
             //Brio-Wu 
-            if(y <= 400 && x<= 400) {
+            if(y <= 0.4 && x<= 0.4) {
                 prim[0] = 1; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 1; // pressure
-                prim[5] = 1.0;// magnetic field
-                prim[6] = 0.75;
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 1*std::pow(10,5); // pressure
+                prim[5] = 0;// magnetic field
+                prim[6] = 0;
                 prim[7] = 0; 
             }
-            else if(y <= 400 && x> 400) {
+            else if(y <= 0.4 && x> 0.4) {
                 prim[0] = 1; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 1; // pressure
-                prim[5] = 1.0; // magnetic field
-                prim[6] = 0.75;
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 1*std::pow(10,5); // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
                 prim[7] = 0; 
             }
-            else if(y > 400 && x<= 400) {
+            else if(y > 0.4 && x<= 0.4) {
                 prim[0] = 0.125; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 0.1; // pressure
-                prim[5] = -1.0; // magnetic field
-                prim[6] = 0.75;
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 0.1*std::pow(10,5); // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
                 prim[7] = 0;  
                 }
             else{
                 prim[0] = 0.125; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 0.1; // pressure
-                prim[5] = -1.0; // magnetic field
-                prim[6] = 0.75;
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 0.1*std::pow(10,5); // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
                 prim[7] = 0;  
                 } 
             
@@ -1200,10 +1208,10 @@ int main() {
 
 
             u[i][j] = PrimitiveToConservative(prim);
-            std::array<double,9> v = ConservativeToPrimitive(u[i][j]);
-            std::cout<<"prim "<<prim[4]<<std::endl;
-            std::cout<<"conserv "<<u[i][j][4]<<std::endl;
-            std::cout<<"prim "<<v[4]<<std::endl;
+            // std::array<double,9> v = ConservativeToPrimitive(u[i][j]);
+            // std::cout<<"prim "<<prim[4]<<std::endl;
+            // std::cout<<"conserv "<<u[i][j][4]<<std::endl;
+            // std::cout<<"prim "<<v[4]<<std::endl;
 
         }
     }

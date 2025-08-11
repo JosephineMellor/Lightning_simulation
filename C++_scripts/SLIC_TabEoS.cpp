@@ -550,7 +550,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // -------- PERIODIC --------
 
     //left and right
-    // for (int j = 0; j < nyCells + 2; ++j) {
+    // for (int j = 0; j < nyCells + 4; ++j) {
     //     u[0][j] = u[nxCells][j]; 
     //     u[1][j] = u[nxCells+1][j];      // Left boundary
     //     u[nxCells + 2][j] = u[2][j]; 
@@ -558,7 +558,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // }
 
     //bottom and top
-    // for (int i = 0; i < nxCells + 2; ++i) {
+    // for (int i = 0; i < nxCells + 4; ++i) {
     //     u[i][0] = u[i][nyCells];      // Bottom boundary
     //     u[i][1] = u[i][nyCells+1];    
     //     u[i][nyCells + 2] = u[i][2];  // Top boundary
@@ -569,7 +569,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // ------ REFLECTIVE -------
 
     //left and right
-    for (int j = 0; j < nyCells + 2; ++j) {//reflect in u_y 
+    for (int j = 0; j < nyCells + 4; ++j) {//reflect in u_y 
         u[0][j] = u[2][j];
         u[1][j] = u[3][j];        // Bottom boundary
         u[nyCells + 2][j] = u[nyCells][j];
@@ -581,7 +581,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     }
 
     // // Bottom and Top boundaries
-    for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y
+    for (int i = 0; i < nxCells + 4; ++i) {//reflect in u_y
         u[i][0] = u[i][2];
         u[i][1] = u[i][3];        // Bottom boundary
         u[i][nyCells + 2] = u[i][nyCells];
