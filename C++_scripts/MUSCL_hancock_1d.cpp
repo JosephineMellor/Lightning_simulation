@@ -747,8 +747,8 @@ int main() {
             prim[2] = 0*std::pow(10,2.5);
             prim[3] = 0*std::pow(10,2.5);
             prim[4] = 1*std::pow(10,5); // pressure
-            prim[5] = 0.75; // magnetic field
-            prim[6] = 1;
+            prim[5] = 0; // magnetic field
+            prim[6] = 0;
             prim[7] = 0; 
             } else {
             prim[0] = 0.125; // Density
@@ -756,8 +756,8 @@ int main() {
             prim[2] = 0*std::pow(10,2.5);
             prim[3] = 0*std::pow(10,2.5);
             prim[4] = 0.1*std::pow(10,5); // pressure
-            prim[5] = 0.75; // magnetic field
-            prim[6] = -1;
+            prim[5] = 0; // magnetic field
+            prim[6] = 0;
             prim[7] = 0; 
         }
 
