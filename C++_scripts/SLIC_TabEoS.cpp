@@ -530,21 +530,21 @@ double ComputeTimeStep(const std::vector<std::vector<std::array <double , 4>>>& 
 void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u, int nxCells, int nyCells) {
     // ------ TRANSMISSIVE --------
 
-    // Left and Right boundaries
-    for (int j = 0; j < nyCells + 4; ++j) {
-        u[0][j] = u[2][j];      // Left boundary: copy from first interior cell
-        u[1][j] = u[2][j];      // Left ghost cell
-        u[nxCells + 2][j] = u[nxCells + 1][j];  // Right ghost cell
-        u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
-    }
+    // // Left and Right boundaries
+    // for (int j = 0; j < nyCells + 4; ++j) {
+    //     u[0][j] = u[2][j];      // Left boundary: copy from first interior cell
+    //     u[1][j] = u[2][j];      // Left ghost cell
+    //     u[nxCells + 2][j] = u[nxCells + 1][j];  // Right ghost cell
+    //     u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
+    // }
 
-    // Bottom and Top boundaries
-    for (int i = 0; i < nxCells + 4; ++i) {
-        u[i][0] = u[i][2];      // Bottom boundary: copy from first interior cell
-        u[i][1] = u[i][2];      // Bottom ghost cell
-        u[i][nyCells + 2] = u[i][nyCells + 1];  // Top ghost cell
-        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    }
+    // // Bottom and Top boundaries
+    // for (int i = 0; i < nxCells + 4; ++i) {
+    //     u[i][0] = u[i][2];      // Bottom boundary: copy from first interior cell
+    //     u[i][1] = u[i][2];      // Bottom ghost cell
+    //     u[i][nyCells + 2] = u[i][nyCells + 1];  // Top ghost cell
+    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+    // }
 
 
     // -------- PERIODIC --------
@@ -569,28 +569,28 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // ------ REFLECTIVE -------
 
     //left and right
-    // for (int j = 0; j < nyCells + 2; ++j) {//reflect in u_y 
-    //     u[0][j] = u[2][j];
-    //     u[1][j] = u[3][j];        // Bottom boundary
-    //     u[nyCells + 2][j] = u[nyCells][j];
-    //     u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
-    //     u[0][j][2] = -u[3][j][2]; 
-    //     u[1][j][2] = -u[2][j][2]; 
-    //     u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
-    //     u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
-    // }
+    for (int j = 0; j < nyCells + 2; ++j) {//reflect in u_y 
+        u[0][j] = u[2][j];
+        u[1][j] = u[3][j];        // Bottom boundary
+        u[nyCells + 2][j] = u[nyCells][j];
+        u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
+        u[0][j][2] = -u[3][j][2]; 
+        u[1][j][2] = -u[2][j][2]; 
+        u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
+        u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
+    }
 
     // // Bottom and Top boundaries
-    // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y
-    //     u[i][0] = u[i][2];
-    //     u[i][1] = u[i][3];        // Bottom boundary
-    //     u[i][nyCells + 2] = u[i][nyCells];
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    //     u[i][0][2] = -u[i][3][2]; 
-    //     u[i][1][2] = -u[i][2][2]; 
-    //     u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
-    //     u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
-    // }
+    for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y
+        u[i][0] = u[i][2];
+        u[i][1] = u[i][3];        // Bottom boundary
+        u[i][nyCells + 2] = u[i][nyCells];
+        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+        u[i][0][2] = -u[i][3][2]; 
+        u[i][1][2] = -u[i][2][2]; 
+        u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
+        u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
+    }
 }
 
 // Update source terms
