@@ -606,36 +606,36 @@ std::array<double , 9> FluxHLLY(const std::array<double , 9>&x , const std::arra
 
 void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u, int nxCells, int nyCells) {
     // Left and Right boundaries periodic
-    for (int j = 0; j < nyCells + 2; ++j) {
-        u[0][j] = u[nxCells][j]; 
-        u[1][j] = u[nxCells+1][j];      // Left boundary
-        u[nxCells + 2][j] = u[2][j]; 
-        u[nxCells + 3][j] = u[3][j];  // Right boundary
-    }
-
-    // Left and Right boundaries transmissive
     // for (int j = 0; j < nyCells + 2; ++j) {
-    //     u[0][j] = u[2][j]; 
-    //     u[1][j] = u[3][j];      // Left boundary
-    //     u[nxCells + 2][j] = u[nxCells][j]; 
-    //     u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
+    //     u[0][j] = u[nxCells][j]; 
+    //     u[1][j] = u[nxCells+1][j];      // Left boundary
+    //     u[nxCells + 2][j] = u[2][j]; 
+    //     u[nxCells + 3][j] = u[3][j];  // Right boundary
     // }
 
-    // Bottom and Top boundaries, reflective
-    for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
-        u[i][0] = u[i][2];
-        u[i][1] = u[i][3];        // Bottom boundary
-        u[i][nyCells + 2] = u[i][nyCells];
-        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-        u[i][0][2] = -u[i][2][2]; 
-        u[i][0][6] = -u[i][2][6]; 
-        u[i][1][2] = -u[i][3][2]; 
-        u[i][1][6] = -u[i][3][6]; 
-        u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
-        u[i][nyCells + 2][6] = -u[i][nyCells][6]; 
-        u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
-        u[i][nyCells + 3][6] = -u[i][nyCells + 1][6]; 
+    // Left and Right boundaries transmissive
+    for (int j = 0; j < nyCells + 2; ++j) {
+        u[0][j] = u[2][j]; 
+        u[1][j] = u[3][j];      // Left boundary
+        u[nxCells + 2][j] = u[nxCells][j]; 
+        u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
     }
+
+    // Bottom and Top boundaries, reflective
+    // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
+    //     u[i][0] = u[i][2];
+    //     u[i][1] = u[i][3];        // Bottom boundary
+    //     u[i][nyCells + 2] = u[i][nyCells];
+    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+    //     u[i][0][2] = -u[i][2][2]; 
+    //     u[i][0][6] = -u[i][2][6]; 
+    //     u[i][1][2] = -u[i][3][2]; 
+    //     u[i][1][6] = -u[i][3][6]; 
+    //     u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
+    //     u[i][nyCells + 2][6] = -u[i][nyCells][6]; 
+    //     u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
+    //     u[i][nyCells + 3][6] = -u[i][nyCells + 1][6]; 
+    // }
 
     //bottom and top periodic
     // for (int i = 0; i < nxCells + 2; ++i) {
@@ -646,24 +646,24 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u,
     // }
 
     //bottom and top transmissive
-    // for (int i = 0; i < nxCells + 2; ++i) {
-    //     u[i][0] = u[i][2];      // Bottom boundary
-    //     u[i][1] = u[i][3];    
-    //     u[i][nyCells + 2] = u[i][nyCells];  // Top boundary
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  
-    // }
+    for (int i = 0; i < nxCells + 2; ++i) {
+        u[i][0] = u[i][2];      // Bottom boundary
+        u[i][1] = u[i][3];    
+        u[i][nyCells + 2] = u[i][nyCells];  // Top boundary
+        u[i][nyCells + 3] = u[i][nyCells + 1];  
+    }
 }
 
 
 int main() { 
-    int nxCells = 128; 
-    int nyCells = 256;
+    int nxCells = 100; 
+    int nyCells = 100;
     double x0 = 0.0;
     double x1 = 1.0;
-    double y0 = -1.0;
+    double y0 = 0.0;
     double y1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 12.0;
+    double tStop = 0.25;
     double C = 0.8;
     double gamma = 5.0 / 3.0;
     double dx = (x1 - x0) / nxCells; 
@@ -763,7 +763,48 @@ int main() {
             //     prim[5] = -1.0; // magnetic field
             //     prim[6] = 0.75;
             //     prim[7] = 0;  
-            //     } 
+            //     }
+            
+            if(y <= 0.4 && x<= 0.4) {
+                prim[0] = 1; // Density
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 1;// pressure
+                prim[5] = 0;// magnetic field
+                prim[6] = 0;
+                prim[7] = 0; 
+            }
+            else if(y <= 0.4 && x> 0.4) {
+                prim[0] = 1; // Density
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 1; // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
+                prim[7] = 0; 
+            }
+            else if(y > 0.4 && x<= 0.4) {
+                prim[0] = 0.125; // Density
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 0.1; // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
+                prim[7] = 0;  
+                }
+            else{
+                prim[0] = 0.125; // Density
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 0.1; // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
+                prim[7] = 0;  
+                } 
             
                 
             // double cos45 = 0.70710678118;
@@ -797,15 +838,15 @@ int main() {
 
 
             //Kelvin-Helmhotz
-            prim[0] = 1.0; // Density
-            prim[1] = 0.5*std::tanh(20*y); // Velocity
-            prim[2] = 0.01*std::sin(2.0*pi*x)*std::exp(-y*y/(0.01));
-            prim[3] = 0.0;
-            prim[4] = 1.0 / gamma; // pressure
-            prim[5] = 0.1*std::cos(pi/3.0); // magnetic field
-            prim[6] = 0.0;
-            prim[7] = 0.1*std::sin(pi/3.0); 
-            prim[8] = 0;
+            // prim[0] = 1.0; // Density
+            // prim[1] = 0.5*std::tanh(20*y); // Velocity
+            // prim[2] = 0.01*std::sin(2.0*pi*x)*std::exp(-y*y/(0.01));
+            // prim[3] = 0.0;
+            // prim[4] = 1.0 / gamma; // pressure
+            // prim[5] = 0.1*std::cos(pi/3.0); // magnetic field
+            // prim[6] = 0.0;
+            // prim[7] = 0.1*std::sin(pi/3.0); 
+            // prim[8] = 0;
 
             //Orszag-Tang
             // prim[0] = gamma*gamma; // Density
@@ -987,17 +1028,17 @@ int main() {
 
 
             // Output the results
-            std::string filename = "MHD" + std::to_string(counter) + ".dat";
-            std::ofstream output(filename);
-            for(int j = 1; j < nyCells+4; j++) { 
-                for(int i = 1; i < nxCells+4; i++) {
-                    double x = x0 + (i - 1)*dx;
-                    double y = y0 + (j - 1)*dy;
-                    output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;
-                }
-                output<<std::endl;
-            }
-            counter +=1;
+            // std::string filename = "MHD" + std::to_string(counter) + ".dat";
+            // std::ofstream output(filename);
+            // for(int j = 1; j < nyCells+4; j++) { 
+            //     for(int i = 1; i < nxCells+4; i++) {
+            //         double x = x0 + (i - 1)*dx;
+            //         double y = y0 + (j - 1)*dy;
+            //         output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;
+            //     }
+            //     output<<std::endl;
+            // }
+            // counter +=1;
         }
 
     } while (t < tStop );
@@ -1020,10 +1061,10 @@ int main() {
 
 
     // Output the results
-    std::string filename = "MHD" + std::to_string(counter) + ".dat";
+    std::string filename = "MHD1.dat";
     std::ofstream output(filename);
-    for(int j = 1; j < nyCells+4; j++) { 
-        for(int i = 1; i < nxCells+4; i++) {
+    for(int j = 1; j < nyCells+3; j++) { 
+        for(int i = 1; i < nxCells+3; i++) {
             double x = x0 + (i - 1)*dx;
             double y = y0 + (j - 1)*dy;
             output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;

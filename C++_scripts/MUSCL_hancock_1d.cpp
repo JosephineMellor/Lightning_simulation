@@ -2,13 +2,20 @@
 #include <cmath>
 #include <vector>
 #include <fstream>
+#include <sstream>
+#include <string>
 #include <array>
 #include <filesystem>
+#include <tuple>
 
 //defining some useful types
 typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
+typedef std::array<double,8> array;
+typedef std::vector<std::array<double,8>> big_array;
+
+const double PI = 3.141592653589793;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -158,17 +165,6 @@ double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, doubl
     return y;
 }
 
-//update source terms
-// std::array<double, 3> MomentumUpdate(std::array<double , 8>u){
-//     double dt = 0.001;
-//     std::array<double , 8>uBar;
-//     int count;
-//     while(count < 100){
-//         for(int i=0; i<u.size() ; i++){
-//             uBar[i] = u[i] + dt ;
-//         }
-//     }
-// }
 std::array<double , 8> PrimitiveToConservative(const std::array<double , 8>& u ){
     //start with variables that dont require equation of state
     std::array<double ,8> v;
@@ -253,7 +249,6 @@ std::array<double , 8> PrimitiveToConservative(const std::array<double , 8>& u )
     double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
 
     v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5 * B2;
-    v[4] = u[4] / (2.0-1) + 0.5*u[0]*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]); //energy
     return v;
 }
 std::array<double, 8> ConservativeToPrimitive(const std::array<double , 8>& u){
@@ -304,7 +299,7 @@ std::array<double, 8> ConservativeToPrimitive(const std::array<double , 8>& u){
     point2 =499;
     half;
     int pressure_index;
-    double e = (u[3] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
+    double e = (u[4] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
 
     //find the indices either side of our energy value in density top and bottom, they should be the same
     while(std::abs(point1-point2)>1){
@@ -338,8 +333,6 @@ std::array<double, 8> ConservativeToPrimitive(const std::array<double , 8>& u){
     double p = pressure_ratio * (pressures[pressure_top_i] - pressures[pressure_bottom_i]) + pressures[pressure_bottom_i];
 
     v[4] = p;
-    v[4] = (u[4] - 0.5*v[0]*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]))*(2.0 -1);//pressure
-
     return v;
 }
 
@@ -687,28 +680,104 @@ std::array<double , 8> getFlux ( std::array<double , 8>x , std::array<double , 8
 }
 
 
-// this function takes in u and spits out uBarL and uBarR
+void applyBoundaryConditions(big_array& u){
+    int n = u.size();
+    // ----- REFLECTIVE ------
+    u[0] = u[3];
+    u[1] = u[2];
+    u[n - 1] = u[n - 4];
+    u[n - 2] = u[n - 3];
+    u[0][1] = -u[3][1];
+    u[1][1] = -u[2][1];
+    u[n - 1][1] = -u[n - 4][1];
+    u[n - 2][1] = -u[n - 3][1];
 
+    // ----- TRANSMISSIVE -----
+    // u[0] = u[3];
+    // u[1] = u[2];
+    // u[n - 1] = u[n - 4];
+    // u[n - 2] = u[n - 3];
 
+}
 
+// Update cylindrical source terms
+big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
+    big_array update(u.size());
+    update = u;
+    double alpha = 1.0;
+
+    for(int i = 0; i < u.size(); i++) { 
+    
+        double r = x0 + (i-0.5) * dx;
+        double rho = u[i][0];
+        double mom_r = u[i][1];
+        double mom_z = u[i][2];
+        double E = u[i][4];
+
+        array prim = ConservativeToPrimitive(u[i]);
+        double v = prim[1];
+        double w = prim[2];
+        double p = prim[4];
+
+        // Source terms
+        double S_rho = -alpha * rho * v / r;
+        double S_mom_r = -alpha * rho * v * v / r;
+        double S_mom_z = -alpha * rho * v * w / r;
+        double S_E = -alpha * (E + p) * v / r;
+
+        // Update using RK2 for source term only:
+
+        // Stage 1
+        array u_stage1;
+        u_stage1[0] = rho + dt * S_rho;
+        u_stage1[1] = mom_r + dt * S_mom_r;
+        u_stage1[2] = mom_z + dt * S_mom_z;
+        u_stage1[3] = 0;
+        u_stage1[4] = E + dt * S_E;
+        u_stage1[5] = 0;
+        u_stage1[6] = 0;
+        u_stage1[7] = 0;
+
+        // Recompute primitives for stage 2
+        array prim_stage1 = ConservativeToPrimitive(u_stage1);
+        double v1 = prim_stage1[1];
+        double w1 = prim_stage1[2];
+        double p1 = prim_stage1[4];
+
+        // Stage 2 source terms
+        double S_rho_2 = -alpha * u_stage1[0] * v1 / r;
+        double S_mom_r_2 = -alpha * u_stage1[0] * v1 * v1 / r;
+        double S_mom_z_2 = -alpha * u_stage1[0] * w1 * v1 / r;
+        double S_E_2 = -alpha * (u_stage1[4] + p1) * v1 / r;
+
+        // Final update
+        update[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+        update[i][1] = mom_r + 0.5 * dt * (S_mom_r + S_mom_r_2);
+        update[i][2] = mom_z + 0.5 * dt * (S_mom_z + S_mom_z_2);
+        update[i][4] = E + 0.5 * dt * (S_E + S_E_2);
+        
+    }
+    
+    return update;
+}
 
 int main() { 
-    int nCells = 800; //the distance between points is 0.01
+    int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
-    double x1 = 800;
+    double x1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 80;
-    double C = 1.0;
+    double tStop = 0.25/std::pow(10,2.5);
+    double C = 0.8;
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
-    std::vector<std::array<double,8>> u(nCells+2);
-    std::vector<std::array<double,8>> uPlus1(nCells+2);
-    std::vector<std::array<double,8>> flux(nCells+2);
-    std::vector<std::array<double,8>> uBarL(nCells+2);
-    std::vector<std::array<double,8>> uBarR(nCells+2);
-    std::vector<std::array<double,8>> uBarHalfL(nCells+2);
-    std::vector<std::array<double,8>> uBarHalfR(nCells+2);
+    std::vector<std::array<double,8>> u(nCells+4);
+    std::vector<std::array<double,8>> uPlus1(u.size());
+    std::vector<std::array<double,8>> flux(u.size());
+    std::vector<std::array<double,8>> uBarL(u.size());
+    std::vector<std::array<double,8>> uBarR(u.size());
+    std::vector<std::array<double,8>> uBarHalfL(u.size());
+    std::vector<std::array<double,8>> uBarHalfR(u.size());
     double dx = (x1 - x0) / nCells; //the space steps 
 
     // Initial conditions!
@@ -717,27 +786,30 @@ int main() {
         // x 0 is at point i=1/2
         double x = x0 + (i-0.5) * dx;
         std::array<double, 8> prim;
-        if(x <= 400) {
+        std::array<double, 8> v;
+        if(x <= 0.4) {
             prim[0] = 1; // Density
-            prim[1] = 0; // Velocity
-            prim[2] = 0;
-            prim[3] = 0;
-            prim[4] = 1; // pressure
-            prim[5] = 0.75; // magnetic field
-            prim[6] = 1;
+            prim[1] = 0*std::pow(10,2.5); // Velocity
+            prim[2] = 0*std::pow(10,2.5);
+            prim[3] = 0*std::pow(10,2.5);
+            prim[4] = 1*std::pow(10,5); // pressure
+            prim[5] = 0; // magnetic field
+            prim[6] = 0;
             prim[7] = 0; 
             } else {
             prim[0] = 0.125; // Density
-            prim[1] = 0; // Velocity
-            prim[2] = 0;
-            prim[3] = 0;
-            prim[4] = 0.1; // pressure
-            prim[5] = 0.75; // magnetic field
-            prim[6] = -1;
+            prim[1] = 0*std::pow(10,2.5); // Velocity
+            prim[2] = 0*std::pow(10,2.5);
+            prim[3] = 0*std::pow(10,2.5);
+            prim[4] = 0.1*std::pow(10,5); // pressure
+            prim[5] = 0; // magnetic field
+            prim[6] = 0;
             prim[7] = 0; 
         }
 
         u[i] = PrimitiveToConservative(prim);
+        v = ConservativeToPrimitive(u[i]);
+        std::cout<<prim[4]<<" "<<u[i][4]<<" "<<v[4]<<std::endl;
     }
 
     
@@ -751,14 +823,15 @@ int main() {
         t = t + dt;
         std::cout<<"t= "<< t<< " dt= "<< dt<< std::endl;
 
-        // Trasmissive boundary conditions
-        u[0] = u[1];
-        u[nCells + 1] = u[nCells];
+        //update source terms
+        u = SourceTermUpdate(u, x0, dx, dt);
+
+        applyBoundaryConditions(u);
 
         //find ubar
 
 
-        for(int i=1; i<=nCells; ++i){
+        for(int i=1; i<=u.size() - 2; ++i){
             for(int j=0; j<8; ++j){
                 double DeltaPlus = u[i+1][j] - u[i][j];
                 double DeltaMinus = u[i][j] - u[i-1][j];
@@ -782,7 +855,7 @@ int main() {
             }
         }
 
-        for(int i=1; i<=nCells; ++i){
+        for(int i=1; i<=u.size() - 2; ++i){
             for(int j=0; j<8; ++j){
                 uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(FluxDef(uBarR[i])[j]-FluxDef(uBarL[i])[j]);
                 uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(FluxDef(uBarR[i])[j]-FluxDef(uBarL[i])[j]);
@@ -790,20 +863,17 @@ int main() {
             }
         }
         
-        uBarHalfL[0] = uBarHalfL[1];
-        uBarHalfL[nCells + 1] = uBarHalfL[nCells];
+        applyBoundaryConditions(uBarHalfL);
+        applyBoundaryConditions(uBarHalfR);
 
-        uBarHalfR[0] = uBarHalfR[1];
-        uBarHalfR[nCells + 1] = uBarHalfR[nCells];
-
-        for(int i = 0; i < nCells+1; i++) { //Define the fluxes
+        for(int i = 0; i < u.size() - 1; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1]);
         }
 
         //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
-        for(int i = 1; i <= nCells+1; i++) { //Update the data
+        for(int i = 1; i <= u.size() - 1; i++) { //Update the data
             for(int j=0; j<8; ++j){
                 uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
             }
@@ -818,7 +888,7 @@ int main() {
     //still need to convert it back to primitive
     //define final results
 
-    std::vector<std::array<double,8>> results(nCells+2);
+    std::vector<std::array<double,8>> results(u.size());
 
     for(int i=0; i<= results.size() -1; ++i){
         results[i] = ConservativeToPrimitive(u[i]);
@@ -827,7 +897,7 @@ int main() {
 
     // Output the results
     std::ofstream output("MHD.dat");
-    for (int i = 1; i <= nCells; ++i) {
+    for (int i = 1; i <= u.size() - 1; ++i) {
         double x = x0 + (i - 1) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << results[i][3] <<" " << results[i][4] <<" " << results[i][5] <<" " << results[i][6] <<" " << results[i][7] << std::endl;
         // std::cout << x << " " << u[i][0] <<  " " << u[i][1] <<  " " << u[i][2] << std::endl;

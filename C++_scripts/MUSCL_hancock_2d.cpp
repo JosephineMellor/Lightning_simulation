@@ -10,6 +10,8 @@
 typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
+typedef std::array<double , 9> array;
+typedef std::vector<std::vector<std::array<double , 9>>> big_array;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -244,7 +246,6 @@ std::array<double , 9> PrimitiveToConservative(const std::array<double , 9>& u )
     double energy = BilinearInterpolation(energies_NE , energies_SE , energies_SW , energies_NW , density_ratio , pressure_ratio);    
 
     v[4] = energy*rho + 0.5*rho*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5 * B2;
-    v[4] = u[4] / (2.0-1) + 0.5*u[0]*(u[1]*u[1] + u[2]*u[2] + u[3]*u[3]) + 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]); //energy
     return v;
 }
 std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
@@ -296,7 +297,7 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
     point2 =499;
     half;
     int pressure_index;
-    double e = (u[3] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
+    double e = (u[4] - 0.5*rho*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*B2) / rho; //internal energy
 
     //find the indices either side of our energy value in density top and bottom, they should be the same
     while(std::abs(point1-point2)>1){
@@ -330,8 +331,6 @@ std::array<double, 9> ConservativeToPrimitive(const std::array<double , 9>& u){
     double p = pressure_ratio * (pressures[pressure_top_i] - pressures[pressure_bottom_i]) + pressures[pressure_bottom_i];
 
     v[4] = p;
-    v[4] = (u[4] - 0.5*v[0]*(v[1]*v[1] + v[2]*v[2] + v[3]*v[3]) - 0.5*(u[5]*u[5] + u[6]*u[6] + u[7]*u[7]))*(2.0 -1);//pressure
-
     return v;
 }
 
@@ -371,10 +370,10 @@ double SoundSpeed(const std::array<double,9> u){
 
     //find our index for pressure also with linear bisection
     point1 =0;
-    point2 =500;
+    point2 =499;
     half;
     int pressure_index;
-    double p = prim[3];
+    double p = prim[4];
     while(std::abs(point1-point2)>1){
         half = floor((point1+point2)/2);
         if(p > pressures[half]){
@@ -407,7 +406,7 @@ double SoundSpeed(const std::array<double,9> u){
 
     //linear interpolate using our variables from before
     double sound_speed = BilinearInterpolation(ss_NE , ss_SE , ss_SW , ss_NW , density_ratio , pressure_ratio);  
-    sound_speed = std::sqrt(2.0 * prim[4] / rho);
+    // sound_speed = std::sqrt(2.0 * prim[4] / rho);
     
     return sound_speed;
 }
@@ -466,21 +465,17 @@ std::tuple <double, double > ComputeTimeStep(const std::vector<std::vector<std::
             double u_x = mom_x / rho;
             double u_y = mom_y / rho;
             double u_z = mom_z / rho;
-            double intermediate = 0.5 * rho *( u_x * u_x + u_y*u_y + u_z*u_z) + 0.5*(Bx*Bx + By*By + Bz*Bz);
             double BmagSquared = Bx*Bx + By*By + Bz*Bz;
             double pressure = v[4];
-
-            double alfven_speed = std::abs(Bx) / std::sqrt(rho);
-            double slow_ma_speed = std::sqrt( 0.5*(sound_speed*sound_speed + (BmagSquared/rho) - std::sqrt((sound_speed*sound_speed + BmagSquared/rho)*(sound_speed*sound_speed + BmagSquared/rho) - 4.0*sound_speed*sound_speed*Bx*Bx / rho)));
             
             // fast speed in x-direction
-            double fast_ma_speed_x = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bx*Bx / rho)));
+            double fast_ma_speed_x = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(std::pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bx*Bx / rho)));
 
             // fast speed in y-direction
-            double fast_ma_speed_y = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * By*By / rho)));
+            double fast_ma_speed_y = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(std::pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * By*By / rho)));
             
             // fast speed in z-direction
-            double fast_ma_speed_z = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bz*Bz / rho)));
+            double fast_ma_speed_z = std::sqrt(0.5 * (sound_speed*sound_speed + BmagSquared/rho + std::sqrt(std::pow(sound_speed*sound_speed + BmagSquared/rho, 2) - 4 * sound_speed*sound_speed * Bz*Bz / rho)));
             
             double speedx = std::abs(u_x) + fast_ma_speed_x;
             double speedy = std::abs(u_y) + fast_ma_speed_y;
@@ -537,7 +532,7 @@ std::tuple<double,double> speedsx( const std::array<double , 9>&x ,  double BxTi
     double pT = p + 0.5*B2;
 
     //find the sound speed
-    double cs2 = SoundSpeed(x);
+    double cs2 = SoundSpeed(x)*SoundSpeed(x);
 
     //find the fast speed
     double cfa2 = 0.5*(cs2 + B2/rho + std::sqrt((cs2 + B2/rho)*(cs2 + B2/rho) - 4.0*cs2*Bx*Bx/rho));
@@ -594,7 +589,7 @@ std::tuple<double,double> speedsy( const std::array<double , 9>&x , double ByTil
     double pT = p + 0.5*B2;
 
     //calculate sound speed
-    double cs2 = SoundSpeed(x);
+    double cs2 = SoundSpeed(x)*SoundSpeed(x);
 
     //find the fast speed
     double cfa2 = 0.5*(cs2 + B2/rho + std::sqrt((cs2 + B2/rho)*(cs2 + B2/rho) - 4.0*cs2*By*By/rho));
@@ -986,69 +981,145 @@ std::array<double , 9> FluxHLLY(const std::array<double , 9>&x , const std::arra
 }
 
 void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u, int nxCells, int nyCells) {
-    // Left and Right boundaries periodic
-    // for (int j = 0; j < nyCells + 2; ++j) {
+    int n = u.size();
+    int m = u[0].size();
+
+    // ------ TRANSMISSIVE --------
+    // for(int i =0; i<n; i++){
+    //     u[0][i] = u[3][i];
+    //     u[1][i] = u[2][i];
+    //     u[n - 1][i] = u[n - 4][i];
+    //     u[n - 2][i] = u[n - 3][i];
+    // }
+    // for(int j =0; j<m; j++){
+    //     u[j][0] = u[j][3];
+    //     u[j][1] = u[j][2];
+    //     u[j][m - 1] = u[j][m - 4];
+    //     u[j][m - 2] = u[j][m - 3];
+    // }
+    
+
+
+    // -------- PERIODIC --------
+
+    //left and right
+    // for (int j = 0; j < nyCells + 4; ++j) {
     //     u[0][j] = u[nxCells][j]; 
     //     u[1][j] = u[nxCells+1][j];      // Left boundary
     //     u[nxCells + 2][j] = u[2][j]; 
     //     u[nxCells + 3][j] = u[3][j];  // Right boundary
     // }
 
-    // Left and Right boundaries transmissive
-    for (int j = 0; j < nyCells + 2; ++j) {
-        u[0][j] = u[2][j]; 
-        u[1][j] = u[3][j];      // Left boundary
-        u[nxCells + 2][j] = u[nxCells][j]; 
-        u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
-    }
-
-    // Bottom and Top boundaries, reflective
-    // for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y and B_y
-    //     u[i][0] = u[i][2];
-    //     u[i][1] = u[i][3];        // Bottom boundary
-    //     u[i][nyCells + 2] = u[i][nyCells];
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    //     u[i][0][2] = -u[i][2][2]; 
-    //     u[i][0][6] = -u[i][2][6]; 
-    //     u[i][1][2] = -u[i][3][2]; 
-    //     u[i][1][6] = -u[i][3][6]; 
-    //     u[i][nyCells + 2][2] = -u[i][nyCells][2]; 
-    //     u[i][nyCells + 2][6] = -u[i][nyCells][6]; 
-    //     u[i][nyCells + 3][2] = -u[i][nyCells + 1][2]; 
-    //     u[i][nyCells + 3][6] = -u[i][nyCells + 1][6]; 
-    // }
-
-    //bottom and top periodic
-    // for (int i = 0; i < nxCells + 2; ++i) {
+    //bottom and top
+    // for (int i = 0; i < nxCells + 4; ++i) {
     //     u[i][0] = u[i][nyCells];      // Bottom boundary
     //     u[i][1] = u[i][nyCells+1];    
     //     u[i][nyCells + 2] = u[i][2];  // Top boundary
     //     u[i][nyCells + 3] = u[i][3];  
     // }
 
-    //bottom and top transmissive
-    for (int i = 0; i < nxCells + 2; ++i) {
-        u[i][0] = u[i][2];      // Bottom boundary
-        u[i][1] = u[i][3];    
-        u[i][nyCells + 2] = u[i][nyCells];  // Top boundary
-        u[i][nyCells + 3] = u[i][nyCells + 1];  
+
+    // ------ REFLECTIVE -------
+
+    //left and right
+    for (int j = 0; j < nyCells + 4; ++j) {//reflect in u_y 
+        u[0][j] = u[2][j];
+        u[1][j] = u[3][j];        // Bottom boundary
+        u[nyCells + 2][j] = u[nyCells][j];
+        u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
+        u[0][j][2] = -u[3][j][2]; 
+        u[1][j][2] = -u[2][j][2]; 
+        u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
+        u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
+    }
+
+    // Bottom and Top boundaries
+    for (int i = 0; i < nxCells + 4; ++i) {//reflect in u_y
+        u[i][0] = u[i][2];
+        u[i][1] = u[i][3];        // Bottom boundary
+        u[i][nyCells + 2] = u[i][nyCells];
+        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+        u[i][0][2] = -u[i][3][2]; 
+        u[i][1][2] = -u[i][2][2]; 
+        u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
+        u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
     }
 }
 
+// Update source terms
+big_array SourceTermUpdate(big_array u , double x0,double dx, double y0, double dy, double dt){
+    big_array update;
+    update.resize(u.size(), std::vector<std::array<double, 9> >(u[0].size()));
+    
+    //Im only updating in x,y and E
+    update = u;
+
+    double alpha = 1.0;
+    for (int j=0; j < u[0].size(); j++){
+        for(int i = 0; i < u.size(); i++) { 
+        
+            double r = x0 + (i-0.5) * dx;
+            double z = y0 + (j-0.5) * dy;
+            double rho = u[i][j][0];
+            double mom_r = u[i][j][1];
+            double mom_z = u[i][j][2];
+            double E = u[i][j][4];
+
+            array prim = ConservativeToPrimitive(u[i][j]);
+            double v = prim[1];
+            double w = prim[2];
+            double p = prim[4];
+
+            // Source terms
+            double S_rho = -alpha * rho * v / r;
+            double S_mom_r = -alpha * rho * v * v / r;
+            double S_mom_z = -alpha * rho * v * w / r;
+            double S_E = -alpha * (E + p) * v / r;
+
+            // Update using RK2 for source term only:
+
+            // Stage 1
+            array u_stage1 = u[i][j];
+            u_stage1[0] = rho + dt * S_rho;
+            u_stage1[1] = mom_r + dt * S_mom_r;
+            u_stage1[2] = mom_z + dt * S_mom_z;
+            u_stage1[4] = E + dt * S_E;
+
+            // Recompute primitives for stage 2
+            array prim_stage1 = ConservativeToPrimitive(u_stage1);
+            double v1 = prim_stage1[1];
+            double w1 = prim_stage1[2];
+            double p1 = prim_stage1[4];
+
+            // Stage 2 source terms
+            double S_rho_2 = -alpha * u_stage1[0] * v1 / r;
+            double S_mom_r_2 = -alpha * u_stage1[0] * v1 * v1 / r;
+            double S_mom_z_2 = -alpha * u_stage1[0] * w1 * v1 / r;
+            double S_E_2 = -alpha * (u_stage1[4] + p1) * v1 / r;
+
+            // Final update
+            update[i][j][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+            update[i][j][1] = mom_r + 0.5 * dt * (S_mom_r + S_mom_r_2);
+            update[i][j][2] = mom_z + 0.5 * dt * (S_mom_z + S_mom_z_2);
+            update[i][j][4] = E + 0.5 * dt * (S_E + S_E_2);
+            
+        }
+    }
+    return update;
+}
 
 int main() { 
-    int nxCells = 800; 
-    int nyCells = 800;
-    double x0 = 0.0;
-    double x1 = 800.0;
-    double y0 = 0.0;
-    double y1 = 800.0;
+    int nxCells = 100; 
+    int nyCells = 100;
+    double x0 = -1.0;
+    double x1 = 1.0;
+    double y0 = -1.0;
+    double y1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 80;
+    double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double dx = (x1 - x0) / nxCells; 
     double dy = (y1 - y0) / nyCells;
-    const double pi = 3.14159265358979323846;
 
     std::vector<std::vector<std::array<double, 9> > > u;
     u.resize(nxCells+4, std::vector<std::array<double, 9> >(nyCells + 4)); //set up u
@@ -1104,46 +1175,67 @@ int main() {
             std::array<double, 9> prim;
 
             //Brio-Wu 
-            if(y <= 400 && x<= 400) {
-                prim[0] = 1; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 1; // pressure
-                prim[5] = 1.0;// magnetic field
-                prim[6] = 0.75;
-                prim[7] = 0; 
-            }
-            else if(y <= 400 && x> 400) {
-                prim[0] = 1; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 1; // pressure
-                prim[5] = 1.0; // magnetic field
-                prim[6] = 0.75;
-                prim[7] = 0; 
-            }
-            else if(y > 400 && x<= 400) {
-                prim[0] = 0.125; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 0.1; // pressure
-                prim[5] = -1.0; // magnetic field
-                prim[6] = 0.75;
+            // if(y <= 0.4 && x<= 0.4) {
+            //     prim[0] = 1; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 1*std::pow(10,5); // pressure
+            //     prim[5] = 0;// magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0; 
+            // }
+            // else if(y <= 0.4 && x> 0.4) {
+            //     prim[0] = 1; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 1*std::pow(10,5); // pressure
+            //     prim[5] = 0; // magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0; 
+            // }
+            // else if(y > 0.4 && x<= 0.4) {
+            //     prim[0] = 0.125; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 0.1*std::pow(10,5); // pressure
+            //     prim[5] = 0; // magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0;  
+            //     }
+            // else{
+            //     prim[0] = 0.125; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 0.1*std::pow(10,5); // pressure
+            //     prim[5] = 0; // magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0;  
+            //     } 
+
+            if(std::sqrt(x*x + y*y)<=0.4) {
+                prim[0] = 1.0; // Density
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 1.0*std::pow(10,5); // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
                 prim[7] = 0;  
                 }
             else{
                 prim[0] = 0.125; // Density
-                prim[1] = 0; // Velocity
-                prim[2] = 0;
-                prim[3] = 0;
-                prim[4] = 0.1; // pressure
-                prim[5] = -1.0; // magnetic field
-                prim[6] = 0.75;
+                prim[1] = 0*std::pow(10,2.5); // Velocity
+                prim[2] = 0*std::pow(10,2.5);
+                prim[3] = 0*std::pow(10,2.5);
+                prim[4] = 0.1*std::pow(10,5); // pressure
+                prim[5] = 0; // magnetic field
+                prim[6] = 0;
                 prim[7] = 0;  
-                } 
+                }
             
                 
             // double cos45 = 0.70710678118;
@@ -1200,6 +1292,10 @@ int main() {
 
 
             u[i][j] = PrimitiveToConservative(prim);
+            // std::array<double,9> v = ConservativeToPrimitive(u[i][j]);
+            // std::cout<<"prim "<<prim[4]<<std::endl;
+            // std::cout<<"conserv "<<u[i][j][4]<<std::endl;
+            // std::cout<<"prim "<<v[4]<<std::endl;
 
         }
     }
@@ -1214,6 +1310,8 @@ int main() {
         double ch = maxSpeed;
         t += dt;
         std::cout << "t= " << t << " dt= " << dt << " ch= "<< maxSpeed<<std::endl;
+
+        u = SourceTermUpdate(u, x0, dx, y0, dy, dt);
 
         applyBoundaryConditions( u , nxCells , nyCells);
 
@@ -1367,17 +1465,17 @@ int main() {
 
 
             // Output the results
-            std::string filename = "MHD" + std::to_string(counter) + ".dat";
-            std::ofstream output(filename);
-            for(int j = 1; j < nyCells+4; j++) { 
-                for(int i = 1; i < nxCells+4; i++) {
-                    double x = x0 + (i - 1)*dx;
-                    double y = y0 + (j - 1)*dy;
-                    output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;
-                }
-                output<<std::endl;
-            }
-            counter +=1;
+            // std::string filename = "MHD" + std::to_string(counter) + ".dat";
+            // std::ofstream output(filename);
+            // for(int j = 1; j < nyCells+4; j++) { 
+            //     for(int i = 1; i < nxCells+4; i++) {
+            //         double x = x0 + (i - 1)*dx;
+            //         double y = y0 + (j - 1)*dy;
+            //         output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] <<  " " << results[i][j][4]<< " " << std::sqrt(results[i][j][5]*results[i][j][5] + results[i][j][6]*results[i][j][6]) / results[i][j][7] <<" " << results[i][j][6] <<  " " << results[i][j][7] << " " << results[i][j][8]<<std::endl;
+            //     }
+            //     output<<std::endl;
+            // }
+            // counter +=1;
         }
 
     } while (t < tStop );
@@ -1400,7 +1498,7 @@ int main() {
 
 
     // Output the results
-    std::string filename = "MHD" + std::to_string(counter) + ".dat";
+    std::string filename = "MHD.dat";
     std::ofstream output(filename);
     for(int j = 1; j < nyCells+4; j++) { 
         for(int i = 1; i < nxCells+4; i++) {

@@ -13,6 +13,7 @@ typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
 typedef std::array<double,4> array;
+typedef std::vector<std::vector<std::array<double , 4>>> big_array;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -529,7 +530,7 @@ double ComputeTimeStep(const std::vector<std::vector<std::array <double , 4>>>& 
 void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u, int nxCells, int nyCells) {
     // ------ TRANSMISSIVE --------
 
-    // Left and Right boundaries
+    // // Left and Right boundaries
     // for (int j = 0; j < nyCells + 4; ++j) {
     //     u[0][j] = u[2][j];      // Left boundary: copy from first interior cell
     //     u[1][j] = u[2][j];      // Left ghost cell
@@ -537,7 +538,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     //     u[nxCells + 3][j] = u[nxCells + 1][j];  // Right boundary
     // }
 
-    // Bottom and Top boundaries
+    // // Bottom and Top boundaries
     // for (int i = 0; i < nxCells + 4; ++i) {
     //     u[i][0] = u[i][2];      // Bottom boundary: copy from first interior cell
     //     u[i][1] = u[i][2];      // Bottom ghost cell
@@ -549,7 +550,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // -------- PERIODIC --------
 
     //left and right
-    // for (int j = 0; j < nyCells + 2; ++j) {
+    // for (int j = 0; j < nyCells + 4; ++j) {
     //     u[0][j] = u[nxCells][j]; 
     //     u[1][j] = u[nxCells+1][j];      // Left boundary
     //     u[nxCells + 2][j] = u[2][j]; 
@@ -557,7 +558,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // }
 
     //bottom and top
-    // for (int i = 0; i < nxCells + 2; ++i) {
+    // for (int i = 0; i < nxCells + 4; ++i) {
     //     u[i][0] = u[i][nyCells];      // Bottom boundary
     //     u[i][1] = u[i][nyCells+1];    
     //     u[i][nyCells + 2] = u[i][2];  // Top boundary
@@ -568,7 +569,7 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
     // ------ REFLECTIVE -------
 
     //left and right
-    for (int j = 0; j < nyCells + 2; ++j) {//reflect in u_y 
+    for (int j = 0; j < nyCells + 4; ++j) {//reflect in u_y 
         u[0][j] = u[2][j];
         u[1][j] = u[3][j];        // Bottom boundary
         u[nyCells + 2][j] = u[nyCells][j];
@@ -579,8 +580,8 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
         u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
     }
 
-    // Bottom and Top boundaries
-    for (int i = 0; i < nxCells + 2; ++i) {//reflect in u_y
+    // // Bottom and Top boundaries
+    for (int i = 0; i < nxCells + 4; ++i) {//reflect in u_y
         u[i][0] = u[i][2];
         u[i][1] = u[i][3];        // Bottom boundary
         u[i][nyCells + 2] = u[i][nyCells];
@@ -593,99 +594,60 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
 }
 
 // Update source terms
-std::vector<std::vector<array>> SourceTermUpdate(std::vector<std::vector<array>> u , double x0,double dx, double dt){
-    std::vector<std::vector<array>> update;
-    update.resize(u.size()+4, std::vector<std::array<double, 4> >(u[0].size() + 4));
-    for(int i = 0; i < u.size(); i++) { 
-        for(int j = 0; j < u[0].size(); j++) {
-            array v = ConservativeToPrimative(u[i][j]);
-            double x = x0 + (i - 1.5) * dx;
+big_array SourceTermUpdate(big_array u , double x0,double dx, double y0, double dy, double dt){
+    big_array update;
+    update.resize(u.size(), std::vector<std::array<double, 4> >(u[0].size()));
+    double alpha = 1.0;
+    for (int j=0; j < u[0].size(); j++){
+        for(int i = 0; i < u.size(); i++) { 
+        
+            double r = x0 + (i-0.5) * dx;
+            double z = y0 + (j-0.5) * dy;
+            double rho = u[i][j][0];
+            double mom_r = u[i][j][1];
+            double mom_z = u[i][j][2];
+            double E = u[i][j][3];
 
-            //start with density
-            array u1 = u[i][j];
-            array intermediate;
-            array k1;
-            array k2;
-            for(int i=0; i<u1.size(); i++){
-                intermediate[i] = u1[i] - dt*u1[1]/x;
-            }
-            for(int i=0; i<u1.size(); i++){
-                k1[i] = - dt*(intermediate[1])/x;
-            }
-            for(int i=0; i<u1.size(); i++){
-                k2[i] = -dt*(intermediate[1] + k1[1])/x;
-            }
-            for(int i=0; i<u1.size(); i++){
-                u1[i] = intermediate[i] + 0.5*(k1[i] + k2[1]);
-            }
-            double new_density = u1[0];
+            array prim = ConservativeToPrimative(u[i][j]);
+            double v = prim[1];
+            double w = prim[2];
+            double p = prim[3];
 
-            //update momentum_x
-            array u2 = u[i][j];
-            array k2int;
-            for(int i=0; i<u2.size(); i++){
-                intermediate[i] = u2[i] - dt*u2[1]*u2[1]/u2[0];
-            }
-            for(int i=0; i<u2.size(); i++){
-                k1[i] = -dt*intermediate[1]*intermediate[1]/intermediate[0];
-            }
-            for(int i=0; i<u2.size(); i++){
-                k2int[i] = intermediate[i] + k1[i];
-            }
-            for(int i=0; i<u2.size(); i++){
-                k2[i] = -dt*k2int[1]*k2int[1]/k2int[0];
-            }
-            for(int i=0; i<u2.size(); i++){
-                u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
-            }
-            double new_momentum_x = u2[1];
+            // Source terms
+            double S_rho = -alpha * rho * v / r;
+            double S_mom_r = -alpha * rho * v * v / r;
+            double S_mom_z = -alpha * rho * v * w / r;
+            double S_E = -alpha * (E + p) * v / r;
 
-            //update momentum_y
-            u2 = u[i][j];
-            for(int i=0; i<u2.size(); i++){
-                intermediate[i] = u2[i] - dt*u2[1]*u2[2]/u2[0];
-            }
-            for(int i=0; i<u2.size(); i++){
-                k1[i] = -dt*intermediate[1]*intermediate[2]/intermediate[0];
-            }
-            for(int i=0; i<u2.size(); i++){
-                k2int[i] = intermediate[i] + k1[i];
-            }
-            for(int i=0; i<u2.size(); i++){
-                k2[i] = -dt*k2int[1]*k2int[2]/k2int[0];
-            }
-            for(int i=0; i<u2.size(); i++){
-                u2[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
-            }
-            double new_momentum_y = u2[1];
+            // Update using RK2 for source term only:
 
-            //update energy
-            array u3 = u[i][j];
-            for(int i=0; i<u3.size(); i++){
-                intermediate[i] = u3[i] - dt*(u3[3] + v[3])*v[1]/x;
-            }
-            for(int i=0; i<u3.size(); i++){
-                k1[i] = -dt*(intermediate[3] + ConservativeToPrimative(intermediate)[3])*ConservativeToPrimative(intermediate)[1]/x;
-            }
-            for(int i=0; i<u3.size(); i++){
-                k2int[i] = intermediate[i] + k1[i];
-            }
-            for(int i=0; i<u3.size(); i++){
-                k1[i] = -dt*(k2int[3] + ConservativeToPrimative(k2int)[3])*ConservativeToPrimative(k2int)[1]/x;
-            }
-            for(int i=0; i<u3.size(); i++){
-                u3[i] = intermediate[i] + 0.5*(k1[i] + k2[i]);
-            }
-            double new_energy = u3[3];
+            // Stage 1
+            array u_stage1;
+            u_stage1[0] = rho + dt * S_rho;
+            u_stage1[1] = mom_r + dt * S_mom_r;
+            u_stage1[2] = mom_z + dt * S_mom_z;
+            u_stage1[3] = E + dt * S_E;
 
+            // Recompute primitives for stage 2
+            array prim_stage1 = ConservativeToPrimative(u_stage1);
+            double v1 = prim_stage1[1];
+            double w1 = prim_stage1[2];
+            double p1 = prim_stage1[3];
+
+            // Stage 2 source terms
+            double S_rho_2 = -alpha * u_stage1[0] * v1 / r;
+            double S_mom_r_2 = -alpha * u_stage1[0] * v1 * v1 / r;
+            double S_mom_z_2 = -alpha * u_stage1[0] * w1 * v1 / r;
+            double S_E_2 = -alpha * (u_stage1[3] + p1) * v1 / r;
+
+            // Final update
+            update[i][j][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+            update[i][j][1] = mom_r + 0.5 * dt * (S_mom_r + S_mom_r_2);
+            update[i][j][2] = mom_z + 0.5 * dt * (S_mom_z + S_mom_z_2);
+            update[i][j][3] = E + 0.5 * dt * (S_E + S_E_2);
             
-            update[i][j][0] = new_density;
-            update[i][j][1] = new_momentum_x;
-            update[i][j][2] = new_momentum_y;
-            update[i][j][3] = new_energy;
         }
     }
-    
     return update;
 }
 
@@ -995,7 +957,7 @@ int main(){
     double y0 = -1.0;
     double y1 = 1.0;
     double tStart = 0.0;
-    double tStop = 0.00016048;
+    double tStop = 0.25 / std::pow(10, 2.5);
     double C = 0.8;
     double omega =0;
 
@@ -1028,7 +990,6 @@ int main(){
             }
 
             u[i][j] = PrimativeToConservative(prim);
-            v[i][j] = ConservativeToPrimative(u[i][j]);
         }
     }
 
@@ -1042,7 +1003,7 @@ int main(){
         t +=dt;
 
         // Update cylindrical source terms
-        u = SourceTermUpdate(u,x0, dx,dt);
+        u = SourceTermUpdate(u,x0, dx,y0,dy,dt);
 
         std::cout << "t = "<< t<<" dt = "<< dt<< std::endl; 
         applyBoundaryConditions(u , nxCells , nyCells);
