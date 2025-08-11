@@ -595,9 +595,10 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 4>>>& u,
 
 // Update source terms
 big_array SourceTermUpdate(big_array u , double x0,double dx, double y0, double dy, double dt){
-    big_array update(u.size());
+    big_array update;
+    update.resize(u.size(), std::vector<std::array<double, 4> >(u[0].size()));
     double alpha = 1.0;
-    for (int j=0; j < u.size(); j++){
+    for (int j=0; j < u[0].size(); j++){
         for(int i = 0; i < u.size(); i++) { 
         
             double r = x0 + (i-0.5) * dx;
@@ -1002,7 +1003,7 @@ int main(){
         t +=dt;
 
         // Update cylindrical source terms
-        //u = SourceTermUpdate(u,x0, dx,y0,dy,dt);
+        u = SourceTermUpdate(u,x0, dx,y0,dy,dt);
 
         std::cout << "t = "<< t<<" dt = "<< dt<< std::endl; 
         applyBoundaryConditions(u , nxCells , nyCells);
