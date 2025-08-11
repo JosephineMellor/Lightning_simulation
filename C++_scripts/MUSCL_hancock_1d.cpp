@@ -721,7 +721,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 800;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 80;
+    double tStop = 80/std::pow(10,2.5);
     double C = 1.0;
     double omega = 0;
 
@@ -743,19 +743,19 @@ int main() {
         std::array<double, 8> prim;
         if(x <= 400) {
             prim[0] = 1; // Density
-            prim[1] = 0; // Velocity
-            prim[2] = 0;
-            prim[3] = 0;
-            prim[4] = 1; // pressure
+            prim[1] = 0*std::pow(10,2.5); // Velocity
+            prim[2] = 0*std::pow(10,2.5);
+            prim[3] = 0*std::pow(10,2.5);
+            prim[4] = 1*std::pow(10,5); // pressure
             prim[5] = 0.75; // magnetic field
             prim[6] = 1;
             prim[7] = 0; 
             } else {
             prim[0] = 0.125; // Density
-            prim[1] = 0; // Velocity
-            prim[2] = 0;
-            prim[3] = 0;
-            prim[4] = 0.1; // pressure
+            prim[1] = 0*std::pow(10,2.5); // Velocity
+            prim[2] = 0*std::pow(10,2.5);
+            prim[3] = 0*std::pow(10,2.5);
+            prim[4] = 0.1*std::pow(10,5); // pressure
             prim[5] = 0.75; // magnetic field
             prim[6] = -1;
             prim[7] = 0; 
