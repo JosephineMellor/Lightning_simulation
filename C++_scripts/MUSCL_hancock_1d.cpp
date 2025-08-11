@@ -697,23 +697,21 @@ std::array<double , 8> getFlux ( std::array<double , 8>x , std::array<double , 8
 void applyBoundaryConditions(big_array& u){
     int n = u.size();
     // ----- REFLECTIVE ------
-    u[0] = u[3];
-    u[1] = u[2];
-    u[n - 1] = u[n - 4];
-    u[n - 2] = u[n - 3];
-    u[0][1] = -u[3][1];
-    u[1][1] = -u[2][1];
-    u[n - 1][1] = -u[n - 4][1];
-    u[n - 2][1] = -u[n - 3][1];
-
-    // ----- TRANSMISSIVE -----
     // u[0] = u[3];
     // u[1] = u[2];
     // u[n - 1] = u[n - 4];
     // u[n - 2] = u[n - 3];
+    // u[0][1] = -u[3][1];
+    // u[1][1] = -u[2][1];
+    // u[n - 1][1] = -u[n - 4][1];
+    // u[n - 2][1] = -u[n - 3][1];
 
-    // u[0] = u[1];
-    // u[n - 1] = u[n - 2];
+    // ----- TRANSMISSIVE -----
+    u[0] = u[3];
+    u[1] = u[2];
+    u[n - 1] = u[n - 4];
+    u[n - 2] = u[n - 3];
+
 }
 
 
@@ -728,13 +726,13 @@ int main() {
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
-    std::vector<std::array<double,8>> u(nCells+2);
-    std::vector<std::array<double,8>> uPlus1(nCells+2);
-    std::vector<std::array<double,8>> flux(nCells+2);
-    std::vector<std::array<double,8>> uBarL(nCells+2);
-    std::vector<std::array<double,8>> uBarR(nCells+2);
-    std::vector<std::array<double,8>> uBarHalfL(nCells+2);
-    std::vector<std::array<double,8>> uBarHalfR(nCells+2);
+    std::vector<std::array<double,8>> u(nCells+4);
+    std::vector<std::array<double,8>> uPlus1(u.size());
+    std::vector<std::array<double,8>> flux(u.size());
+    std::vector<std::array<double,8>> uBarL(u.size());
+    std::vector<std::array<double,8>> uBarR(u.size());
+    std::vector<std::array<double,8>> uBarHalfL(u.size());
+    std::vector<std::array<double,8>> uBarHalfR(u.size());
     double dx = (x1 - x0) / nCells; //the space steps 
 
     // Initial conditions!
@@ -784,7 +782,7 @@ int main() {
         //find ubar
 
 
-        for(int i=1; i<=nCells; ++i){
+        for(int i=1; i<=u.size() - 2; ++i){
             for(int j=0; j<8; ++j){
                 double DeltaPlus = u[i+1][j] - u[i][j];
                 double DeltaMinus = u[i][j] - u[i-1][j];
@@ -808,7 +806,7 @@ int main() {
             }
         }
 
-        for(int i=1; i<=nCells; ++i){
+        for(int i=1; i<=u.size() - 2; ++i){
             for(int j=0; j<8; ++j){
                 uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(FluxDef(uBarR[i])[j]-FluxDef(uBarL[i])[j]);
                 uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(FluxDef(uBarR[i])[j]-FluxDef(uBarL[i])[j]);
@@ -822,14 +820,14 @@ int main() {
         uBarHalfR[0] = uBarHalfR[1];
         uBarHalfR[nCells + 1] = uBarHalfR[nCells];
 
-        for(int i = 0; i < nCells+1; i++) { //Define the fluxes
+        for(int i = 0; i < u.size() - 1; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1]);
         }
 
         //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
-        for(int i = 1; i <= nCells+1; i++) { //Update the data
+        for(int i = 1; i <= u.size() - 1; i++) { //Update the data
             for(int j=0; j<8; ++j){
                 uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
             }
@@ -844,7 +842,7 @@ int main() {
     //still need to convert it back to primitive
     //define final results
 
-    std::vector<std::array<double,8>> results(nCells+2);
+    std::vector<std::array<double,8>> results(u.size());
 
     for(int i=0; i<= results.size() -1; ++i){
         results[i] = ConservativeToPrimitive(u[i]);
@@ -853,7 +851,7 @@ int main() {
 
     // Output the results
     std::ofstream output("MHD.dat");
-    for (int i = 1; i <= nCells; ++i) {
+    for (int i = 0; i <= u.size() - 1; ++i) {
         double x = x0 + (i - 1) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << results[i][3] <<" " << results[i][4] <<" " << results[i][5] <<" " << results[i][6] <<" " << results[i][7] << std::endl;
         // std::cout << x << " " << u[i][0] <<  " " << u[i][1] <<  " " << u[i][2] << std::endl;
