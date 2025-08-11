@@ -2,13 +2,20 @@
 #include <cmath>
 #include <vector>
 #include <fstream>
+#include <sstream>
+#include <string>
 #include <array>
 #include <filesystem>
+#include <tuple>
 
 //defining some useful types
 typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
+typedef std::array<double,3> array;
+typedef std::vector<std::array<double,3>> big_array;
+
+const double PI = 3.141592653589793;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -687,8 +694,27 @@ std::array<double , 8> getFlux ( std::array<double , 8>x , std::array<double , 8
 }
 
 
-// this function takes in u and spits out uBarL and uBarR
+void applyBoundaryConditions(big_array& u){
+    int n = u.size();
+    // ----- REFLECTIVE ------
+    u[0] = u[3];
+    u[1] = u[2];
+    u[n - 1] = u[n - 4];
+    u[n - 2] = u[n - 3];
+    u[0][1] = -u[3][1];
+    u[1][1] = -u[2][1];
+    u[n - 1][1] = -u[n - 4][1];
+    u[n - 2][1] = -u[n - 3][1];
 
+    // ----- TRANSMISSIVE -----
+    // u[0] = u[3];
+    // u[1] = u[2];
+    // u[n - 1] = u[n - 4];
+    // u[n - 2] = u[n - 3];
+
+    // u[0] = u[1];
+    // u[n - 1] = u[n - 2];
+}
 
 
 
