@@ -578,7 +578,7 @@ void ThomasAlorithm(const std::vector<double>& a, std::vector<double>& b,const s
 }
 
 //solve the poisson equation for magnetic potential
-std::vector<double> SolvePotential(double t, double alpha = 22708, double beta = 1294530, double gamma = 10847100, double I0 = 106405, double x0, double dx, double nCells){
+std::vector<double> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 22708, double beta = 1294530, double gamma = 10847100, double I0 = 106405){
     //set up initial data for current density with current I(t)
     double I = I0*(std::exp(-alpha * t) - std::exp(-beta * t))*(1 - std::exp(-gamma * t))*(1 - std::exp(-gamma * t));
     std::vector<double> J(nCells);
@@ -613,6 +613,68 @@ std::vector<double> SolvePotential(double t, double alpha = 22708, double beta =
     A = d;
 
     return A;
+}
+
+//use finite difference to retrive the magnetic feild from it's potential using central differences
+std::vector<double> MagneticFeild(std::vector<double> A, double dx){
+    std::vector<double> B(A.size());
+
+    //central differences
+    for (int i=1; i<A.size()-1; i++){
+        B[i] = - (A[i+1] - A[i-1]) / (2.0 * dx);
+    }
+
+    //endpoints
+    B[0] = -(A[1] - A[0]) / dx;
+    B[B.size() - 1] = -(A[A.size() - 1] - A[A.size() - 2]) / dx;
+
+    return B;
+}
+
+//use euler method to update momentum
+big_array momentumUpdate(big_array u, std::vector<double> J , std::vector<double> B, double x0, double dx, double dt){
+    big_array update(u.size());
+    update = u;
+    std::vector<double> cross(u.size());
+    for (int i =0; i<cross.size(); i++){
+        // J_z * B_{theta} (in -r direction)
+        cross[i] = -J[i] * B[i]; 
+    }
+
+    for(int i = 0; i < u.size(); i++) { 
+    
+        double r = x0 + (i-0.5) * dx;
+        double mom = u[i][1];
+
+        double mom1 = mom + dt * cross[i];
+        
+        update[i][1] = mom1;
+    }
+    
+    return update;
+}
+
+//use euler method to update energy
+big_array energyUpdate(big_array u, std::vector<double> J , std::vector<double> B, double x0, double dx, double dt){
+    big_array update(u.size());
+    update = u;
+    std::vector<double> cross(u.size());
+    for (int i =0; i<cross.size(); i++){
+        // J_z * B_{theta} (in -r direction)
+        cross[i] = -J[i] * B[i]; 
+    }
+
+    for(int i = 0; i < u.size(); i++) { 
+    
+        double r = x0 + (i-0.5) * dx;
+        double v = u[i][1] / u[i][0];
+
+        double e1 = v * cross[i];
+        
+        update[i][2] = u[i][2] + dt * e1;
+    }
+    
+    return update;
 }
 
 int main() { 
