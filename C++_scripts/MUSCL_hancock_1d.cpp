@@ -697,32 +697,80 @@ std::array<double , 8> getFlux ( std::array<double , 8>x , std::array<double , 8
 void applyBoundaryConditions(big_array& u){
     int n = u.size();
     // ----- REFLECTIVE ------
-    // u[0] = u[3];
-    // u[1] = u[2];
-    // u[n - 1] = u[n - 4];
-    // u[n - 2] = u[n - 3];
-    // u[0][1] = -u[3][1];
-    // u[1][1] = -u[2][1];
-    // u[n - 1][1] = -u[n - 4][1];
-    // u[n - 2][1] = -u[n - 3][1];
-
-    // ----- TRANSMISSIVE -----
     u[0] = u[3];
     u[1] = u[2];
     u[n - 1] = u[n - 4];
     u[n - 2] = u[n - 3];
+    u[0][1] = -u[3][1];
+    u[1][1] = -u[2][1];
+    u[n - 1][1] = -u[n - 4][1];
+    u[n - 2][1] = -u[n - 3][1];
+
+    // ----- TRANSMISSIVE -----
+    // u[0] = u[3];
+    // u[1] = u[2];
+    // u[n - 1] = u[n - 4];
+    // u[n - 2] = u[n - 3];
 
 }
 
+// Update cylindrical source terms
+big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
+    big_array update(u.size());
+    update = u;
+    double alpha = 1.0;
 
+    for(int i = 0; i < u.size(); i++) { 
+    
+        double r = x0 + (i-0.5) * dx;
+        double rho = u[i][0];
+        double mom = u[i][1];
+        double E = u[i][2];
+
+        array prim = ConservativeToPrimitive(u[i]);
+        double v = prim[1];
+        double p = prim[2];
+
+        // Source terms
+        double S_rho = -alpha * rho * v / r;
+        double S_mom = -alpha * rho * v * v / r;
+        double S_E = -alpha * (E + p) * v / r;
+
+        // Update using RK2 for source term only:
+
+        // Stage 1
+        array u_stage1;
+        u_stage1[0] = rho + dt * S_rho;
+        u_stage1[1] = mom + dt * S_mom;
+        u_stage1[2] = E + dt * S_E;
+
+        // Recompute primitives for stage 2
+        array prim_stage1 = ConservativeToPrimitive(u_stage1);
+        double v1 = prim_stage1[1];
+        double p1 = prim_stage1[2];
+
+        // Stage 2 source terms
+        double S_rho_2 = -alpha * u_stage1[0] * v1 / r;
+        double S_mom_2 = -alpha * u_stage1[0] * v1 * v1 / r;
+        double S_E_2 = -alpha * (u_stage1[2] + p1) * v1 / r;
+
+        // Final update
+        update[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+        update[i][1] = mom + 0.5 * dt * (S_mom + S_mom_2);
+        update[i][2] = E + 0.5 * dt * (S_E + S_E_2);
+        
+    }
+    
+    return update;
+}
 
 int main() { 
-    int nCells = 800; //the distance between points is 0.01
+    int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
-    double x1 = 800;
+    double x1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 80/std::pow(10,2.5);
-    double C = 1.0;
+    double tStop = 0.25/std::pow(10,2.5);
+    double C = 0.8;
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
@@ -741,7 +789,7 @@ int main() {
         // x 0 is at point i=1/2
         double x = x0 + (i-0.5) * dx;
         std::array<double, 8> prim;
-        if(x <= 400) {
+        if(x <= 0.4) {
             prim[0] = 1; // Density
             prim[1] = 0*std::pow(10,2.5); // Velocity
             prim[2] = 0*std::pow(10,2.5);
@@ -774,6 +822,9 @@ int main() {
         dt = ComputeTimeStep(u , C , dx); 
         t = t + dt;
         std::cout<<"t= "<< t<< " dt= "<< dt<< std::endl;
+
+        //update source terms
+        u = SourceTermUpdate(u, x0, dx, dt);
 
         applyBoundaryConditions(u);
 
