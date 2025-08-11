@@ -724,16 +724,19 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
     
         double r = x0 + (i-0.5) * dx;
         double rho = u[i][0];
-        double mom = u[i][1];
-        double E = u[i][2];
+        double mom_r = u[i][1];
+        double mom_z = u[i][2];
+        double E = u[i][4];
 
         array prim = ConservativeToPrimitive(u[i]);
         double v = prim[1];
-        double p = prim[2];
+        double w = prim[2];
+        double p = prim[4];
 
         // Source terms
         double S_rho = -alpha * rho * v / r;
-        double S_mom = -alpha * rho * v * v / r;
+        double S_mom_r = -alpha * rho * v * v / r;
+        double S_mom_z = -alpha * rho * v * w / r;
         double S_E = -alpha * (E + p) * v / r;
 
         // Update using RK2 for source term only:
@@ -741,23 +744,31 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
         // Stage 1
         array u_stage1;
         u_stage1[0] = rho + dt * S_rho;
-        u_stage1[1] = mom + dt * S_mom;
-        u_stage1[2] = E + dt * S_E;
+        u_stage1[1] = mom_r + dt * S_mom_r;
+        u_stage1[2] = mom_z + dt * S_mom_z;
+        u_stage1[3] = 0;
+        u_stage1[4] = E + dt * S_E;
+        u_stage1[5] = 0;
+        u_stage1[6] = 0;
+        u_stage1[7] = 0;
 
         // Recompute primitives for stage 2
         array prim_stage1 = ConservativeToPrimitive(u_stage1);
         double v1 = prim_stage1[1];
-        double p1 = prim_stage1[2];
+        double w1 = prim_stage1[2];
+        double p1 = prim_stage1[4];
 
         // Stage 2 source terms
         double S_rho_2 = -alpha * u_stage1[0] * v1 / r;
-        double S_mom_2 = -alpha * u_stage1[0] * v1 * v1 / r;
-        double S_E_2 = -alpha * (u_stage1[2] + p1) * v1 / r;
+        double S_mom_r_2 = -alpha * u_stage1[0] * v1 * v1 / r;
+        double S_mom_z_2 = -alpha * u_stage1[0] * w1 * v1 / r;
+        double S_E_2 = -alpha * (u_stage1[4] + p1) * v1 / r;
 
         // Final update
         update[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
-        update[i][1] = mom + 0.5 * dt * (S_mom + S_mom_2);
-        update[i][2] = E + 0.5 * dt * (S_E + S_E_2);
+        update[i][1] = mom_r + 0.5 * dt * (S_mom_r + S_mom_r_2);
+        update[i][2] = mom_z + 0.5 * dt * (S_mom_z + S_mom_z_2);
+        update[i][4] = E + 0.5 * dt * (S_E + S_E_2);
         
     }
     
@@ -897,7 +908,7 @@ int main() {
 
     // Output the results
     std::ofstream output("MHD.dat");
-    for (int i = 0; i <= u.size() - 1; ++i) {
+    for (int i = 1; i <= u.size() - 1; ++i) {
         double x = x0 + (i - 1) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << results[i][3] <<" " << results[i][4] <<" " << results[i][5] <<" " << results[i][6] <<" " << results[i][7] << std::endl;
         // std::cout << x << " " << u[i][0] <<  " " << u[i][1] <<  " " << u[i][2] << std::endl;
