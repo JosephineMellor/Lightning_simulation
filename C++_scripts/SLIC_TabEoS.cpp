@@ -1014,7 +1014,7 @@ int main(){
         for(int j = 2; j < nyCells+2; j++) {
             for(int i = 2; i < nxCells+2; i++) {
                 for(int k=0 ; k<4 ; ++k){
-                    u[i][j][k] = 0.5*(uPlus1x[i][j][k] + uPlus1x[i][j][k]);
+                    u[i][j][k] = 0.5*(uPlus1x[i][j][k] + uPlus1y[i][j][k]);
                 }
             }
         }

@@ -10,6 +10,8 @@
 typedef std::array<double , 500> data_vec;
 typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
+typedef std::array<double , 9> array;
+typedef std::vector<std::vector<std::array<double , 9>>> big_array;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -983,18 +985,18 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u,
     int m = u[0].size();
 
     // ------ TRANSMISSIVE --------
-    for(int i =0; i<n; i++){
-        u[0][i] = u[3][i];
-        u[1][i] = u[2][i];
-        u[n - 1][i] = u[n - 4][i];
-        u[n - 2][i] = u[n - 3][i];
-    }
-    for(int j =0; j<m; j++){
-        u[j][0] = u[j][3];
-        u[j][1] = u[j][2];
-        u[j][m - 1] = u[j][m - 4];
-        u[j][m - 2] = u[j][m - 3];
-    }
+    // for(int i =0; i<n; i++){
+    //     u[0][i] = u[3][i];
+    //     u[1][i] = u[2][i];
+    //     u[n - 1][i] = u[n - 4][i];
+    //     u[n - 2][i] = u[n - 3][i];
+    // }
+    // for(int j =0; j<m; j++){
+    //     u[j][0] = u[j][3];
+    //     u[j][1] = u[j][2];
+    //     u[j][m - 1] = u[j][m - 4];
+    //     u[j][m - 2] = u[j][m - 3];
+    // }
     
 
 
@@ -1020,30 +1022,91 @@ void applyBoundaryConditions(std::vector<std::vector<std::array<double, 9>>>& u,
     // ------ REFLECTIVE -------
 
     //left and right
-    // for (int j = 0; j < nyCells + 4; ++j) {//reflect in u_y 
-    //     u[0][j] = u[2][j];
-    //     u[1][j] = u[3][j];        // Bottom boundary
-    //     u[nyCells + 2][j] = u[nyCells][j];
-    //     u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
-    //     u[0][j][2] = -u[3][j][2]; 
-    //     u[1][j][2] = -u[2][j][2]; 
-    //     u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
-    //     u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
-    // }
+    for (int j = 0; j < nyCells + 4; ++j) {//reflect in u_y 
+        u[0][j] = u[2][j];
+        u[1][j] = u[3][j];        // Bottom boundary
+        u[nyCells + 2][j] = u[nyCells][j];
+        u[nyCells + 3][j] = u[nyCells + 1][j];  // Top boundary
+        u[0][j][2] = -u[3][j][2]; 
+        u[1][j][2] = -u[2][j][2]; 
+        u[nyCells + 2][j][2] = -u[nyCells + 1][j][2]; 
+        u[nyCells + 3][j][2] = -u[nyCells][j][2]; 
+    }
 
-    // // // Bottom and Top boundaries
-    // for (int i = 0; i < nxCells + 4; ++i) {//reflect in u_y
-    //     u[i][0] = u[i][2];
-    //     u[i][1] = u[i][3];        // Bottom boundary
-    //     u[i][nyCells + 2] = u[i][nyCells];
-    //     u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
-    //     u[i][0][2] = -u[i][3][2]; 
-    //     u[i][1][2] = -u[i][2][2]; 
-    //     u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
-    //     u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
-    // }
+    // Bottom and Top boundaries
+    for (int i = 0; i < nxCells + 4; ++i) {//reflect in u_y
+        u[i][0] = u[i][2];
+        u[i][1] = u[i][3];        // Bottom boundary
+        u[i][nyCells + 2] = u[i][nyCells];
+        u[i][nyCells + 3] = u[i][nyCells + 1];  // Top boundary
+        u[i][0][2] = -u[i][3][2]; 
+        u[i][1][2] = -u[i][2][2]; 
+        u[i][nyCells + 2][2] = -u[i][nyCells + 1][2]; 
+        u[i][nyCells + 3][2] = -u[i][nyCells][2]; 
+    }
 }
 
+// Update source terms
+big_array SourceTermUpdate(big_array u , double x0,double dx, double y0, double dy, double dt){
+    big_array update;
+    update.resize(u.size(), std::vector<std::array<double, 9> >(u[0].size()));
+    
+    //Im only updating in x,y and E
+    update = u;
+
+    double alpha = 1.0;
+    for (int j=0; j < u[0].size(); j++){
+        for(int i = 0; i < u.size(); i++) { 
+        
+            double r = x0 + (i-0.5) * dx;
+            double z = y0 + (j-0.5) * dy;
+            double rho = u[i][j][0];
+            double mom_r = u[i][j][1];
+            double mom_z = u[i][j][2];
+            double E = u[i][j][4];
+
+            array prim = ConservativeToPrimitive(u[i][j]);
+            double v = prim[1];
+            double w = prim[2];
+            double p = prim[4];
+
+            // Source terms
+            double S_rho = -alpha * rho * v / r;
+            double S_mom_r = -alpha * rho * v * v / r;
+            double S_mom_z = -alpha * rho * v * w / r;
+            double S_E = -alpha * (E + p) * v / r;
+
+            // Update using RK2 for source term only:
+
+            // Stage 1
+            array u_stage1 = u[i][j];
+            u_stage1[0] = rho + dt * S_rho;
+            u_stage1[1] = mom_r + dt * S_mom_r;
+            u_stage1[2] = mom_z + dt * S_mom_z;
+            u_stage1[4] = E + dt * S_E;
+
+            // Recompute primitives for stage 2
+            array prim_stage1 = ConservativeToPrimitive(u_stage1);
+            double v1 = prim_stage1[1];
+            double w1 = prim_stage1[2];
+            double p1 = prim_stage1[4];
+
+            // Stage 2 source terms
+            double S_rho_2 = -alpha * u_stage1[0] * v1 / r;
+            double S_mom_r_2 = -alpha * u_stage1[0] * v1 * v1 / r;
+            double S_mom_z_2 = -alpha * u_stage1[0] * w1 * v1 / r;
+            double S_E_2 = -alpha * (u_stage1[4] + p1) * v1 / r;
+
+            // Final update
+            update[i][j][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+            update[i][j][1] = mom_r + 0.5 * dt * (S_mom_r + S_mom_r_2);
+            update[i][j][2] = mom_z + 0.5 * dt * (S_mom_z + S_mom_z_2);
+            update[i][j][4] = E + 0.5 * dt * (S_E + S_E_2);
+            
+        }
+    }
+    return update;
+}
 
 int main() { 
     int nxCells = 100; 
@@ -1112,32 +1175,53 @@ int main() {
             std::array<double, 9> prim;
 
             //Brio-Wu 
-            if(y <= 0.4 && x<= 0.4) {
-                prim[0] = 1; // Density
+            // if(y <= 0.4 && x<= 0.4) {
+            //     prim[0] = 1; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 1*std::pow(10,5); // pressure
+            //     prim[5] = 0;// magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0; 
+            // }
+            // else if(y <= 0.4 && x> 0.4) {
+            //     prim[0] = 1; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 1*std::pow(10,5); // pressure
+            //     prim[5] = 0; // magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0; 
+            // }
+            // else if(y > 0.4 && x<= 0.4) {
+            //     prim[0] = 0.125; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 0.1*std::pow(10,5); // pressure
+            //     prim[5] = 0; // magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0;  
+            //     }
+            // else{
+            //     prim[0] = 0.125; // Density
+            //     prim[1] = 0*std::pow(10,2.5); // Velocity
+            //     prim[2] = 0*std::pow(10,2.5);
+            //     prim[3] = 0*std::pow(10,2.5);
+            //     prim[4] = 0.1*std::pow(10,5); // pressure
+            //     prim[5] = 0; // magnetic field
+            //     prim[6] = 0;
+            //     prim[7] = 0;  
+            //     } 
+
+            if(std::sqrt(x*x + y*y)<=0.4) {
+                prim[0] = 1.0; // Density
                 prim[1] = 0*std::pow(10,2.5); // Velocity
                 prim[2] = 0*std::pow(10,2.5);
                 prim[3] = 0*std::pow(10,2.5);
-                prim[4] = 1*std::pow(10,5); // pressure
-                prim[5] = 0;// magnetic field
-                prim[6] = 0;
-                prim[7] = 0; 
-            }
-            else if(y <= 0.4 && x> 0.4) {
-                prim[0] = 1; // Density
-                prim[1] = 0*std::pow(10,2.5); // Velocity
-                prim[2] = 0*std::pow(10,2.5);
-                prim[3] = 0*std::pow(10,2.5);
-                prim[4] = 1*std::pow(10,5); // pressure
-                prim[5] = 0; // magnetic field
-                prim[6] = 0;
-                prim[7] = 0; 
-            }
-            else if(y > 0.4 && x<= 0.4) {
-                prim[0] = 0.125; // Density
-                prim[1] = 0*std::pow(10,2.5); // Velocity
-                prim[2] = 0*std::pow(10,2.5);
-                prim[3] = 0*std::pow(10,2.5);
-                prim[4] = 0.1*std::pow(10,5); // pressure
+                prim[4] = 1.0*std::pow(10,5); // pressure
                 prim[5] = 0; // magnetic field
                 prim[6] = 0;
                 prim[7] = 0;  
@@ -1151,7 +1235,7 @@ int main() {
                 prim[5] = 0; // magnetic field
                 prim[6] = 0;
                 prim[7] = 0;  
-                } 
+                }
             
                 
             // double cos45 = 0.70710678118;
@@ -1226,6 +1310,8 @@ int main() {
         double ch = maxSpeed;
         t += dt;
         std::cout << "t= " << t << " dt= " << dt << " ch= "<< maxSpeed<<std::endl;
+
+        u = SourceTermUpdate(u, x0, dx, y0, dy, dt);
 
         applyBoundaryConditions( u , nxCells , nyCells);
 
