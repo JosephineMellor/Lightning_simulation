@@ -990,6 +990,7 @@ int main(){
             }
 
             u[i][j] = PrimativeToConservative(prim);
+            v[i][j] = ConservativeToPrimative(u[i][j]);
         }
     }
 
