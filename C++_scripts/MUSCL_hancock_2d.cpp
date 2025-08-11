@@ -1111,9 +1111,9 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double y0, double 
 int main() { 
     int nxCells = 100; 
     int nyCells = 100;
-    double x0 = 0.0;
+    double x0 = -1.0;
     double x1 = 1.0;
-    double y0 = 0.0;
+    double y0 = -1.0;
     double y1 = 1.0;
     double tStart = 0.0; //set the start and finish time steps the same
     double tStop = 0.25/std::pow(10,2.5);
