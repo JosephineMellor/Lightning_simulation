@@ -118,10 +118,23 @@ Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double 
 //set up current distribution
 std::array<double,2> current(double r, double z, double t, double x0, double dx, double y0, double dy, double Nr, double Nz, double gamma = 10847100){
     Eigen::VectorXd phi = laplaceSolver(t,x0,dx,y0,dy,Nr,Nz);
-    int i = (r - x0)/dx + 1.5;
-    int j = (z - y0)/dy + 1.5;
-    double Jr = (phi[i+1] - phi[i-1]) / (2*dx);
-    double Jz = (phi[i+1] - phi[i-1]) / (2*dy);
+    int i = static_cast<int>(std::round((r - x0)/dx + 1.5));
+    int j = static_cast<int>(std::round((z - y0)/dy + 1.5));
+
+    // Ensure i and j are within valid bounds (1..Nr-2 and 1..Nz-2 for central differences)
+    if (i <= 0){i = 1;}
+    if (i >= Nr - 1){i = Nr - 2;}
+    if (j <= 0){ j = 1;}
+    if (j >= Nz - 1){ j = Nz - 2;}
+
+    int k_ip = vectoridx(i+1, j, Nz);
+    int k_im = vectoridx(i-1, j, Nz);
+    int k_jp = vectoridx(i, j+1, Nz);
+    int k_jm = vectoridx(i, j-1, Nz);
+
+    double Jr = (phi[k_ip] - phi[k_im]) / (2*dx);
+    double Jz = (phi[k_jp] - phi[k_jm]) / (2*dy);
+
 
 
     double I = I0 * (std::exp(-alpha * t) - std::exp(-beta * t)) * ( 1 - std::exp(-gamma * t)) * ( 1 - std::exp(-gamma * t));
