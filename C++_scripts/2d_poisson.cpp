@@ -7,28 +7,11 @@
 #include <tuple>
 #include <Eigen/Sparse>
 
-//set up ranges of r and z and find differences
-const int nxCells = 100;
-const int nyCells = 100;
-const double x0 = -1.0;
-const double x1 = 1.0;
-const double y0 = -1.0;
-const double y1 = 1.0;
-
-const double r0 = x0, r1 = x1;
-const double z0 = y0, z1 = y1;
-
-//set up the grid to use for the finite difference scheme
-const int Nr = nxCells; 
-const int Nz = nyCells;
-const int N = Nr * Nz;
-
 const int I0 = 106405;
 const int alpha = 22708;
 const int beta = 1294530;
-const int gamma = 10847100;
 const double PI = 3.141592653589793;
-const double r0 = 2e-3; //2mm in meters
+const double R0 = 2e-3; //2mm in meters
 
 //defining some useful types
 typedef std::array<double , 500> data_vec;
@@ -39,46 +22,69 @@ typedef std::vector<std::vector<std::array<double , 4>>> big_array;
 
 
 //flatten the (i,j) into the index of a vector of size N (there will be Nz of each i with each j added on)
-int vectoridx(int i, int j){
+int vectoridx(int i, int j, int Nz){
     return i * Nz + j;
 }
 
-//set up current distribution
-std::array<double,2> current(double r, double z, double t){
-    double I = I0 * (std::exp(-alpha * t) - std::exp(-beta * t)) * ( 1 - std::exp(-gamma * t)) * ( 1 - std::exp(-gamma * t));
-    std::array<double,2> J;
-    J[1] = - (I/PI*r0*r0) * std::exp(-(r/r0)*(r/r0));
-    J[0] = 0;
-    return J;
-}
-
-//solve the sparse matrix linear system
-std::tuple<std::array<Eigen::VectorXd,2>, std::array<Eigen::VectorXd,2>> poissonSolver(double t){
-    double dr = (r1 - r0) / (Nr - 1);
-    double dz = (z1 - z0) / (Nz - 1);
+//solve the sparse matrix linear system for laplace's equation
+Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double dy, double Nr, double Nz){
+    double dr = dx;
+    double dz = dy;
     double dr2 = dr * dr;
     double dz2 = dz * dz;
+    int N = Nr * Nz;
+    double r0 = x0;
+    double z0 = y0;
+    double gamma = 10847100;
 
     Eigen::SparseMatrix<double> M(N,N);
-    Eigen::VectorXd bR = Eigen::VectorXd::Zero(N);
-    Eigen::VectorXd bZ = Eigen::VectorXd::Zero(N);
+    Eigen::VectorXd b = Eigen::VectorXd::Zero(N);
     std::vector<Eigen::Triplet<double>> coefficients;
 
     //set up matrix
     for(int i =0; i < Nr; ++i){
-        double r = i * dr;
+        double r = r0 + (i - 1.5)* dr;
 
         for(int j =0; j < Nz; ++j){
-            int k = vectoridx(i,j);
-            double z = j * dz;
+            int k = vectoridx(i,j, Nz);
+            double z = z0 + (j - 1.5) * dz;
 
             //dirichlet conditions
             if(i == 0 || i == Nr - 1 || j == 0 || j == Nz - 1){
                 coefficients.emplace_back(k,k,1.0);
-                bR[k] = 0.0;
-                bZ[k] = 0.0;
                 continue;
             }
+
+            if(r < 0.01 && j == Nz - 1){
+                b[k] = -(1/3.2e7) * (I0 * (std::exp(-alpha * t) - std::exp(-beta * t)) * ( 1 - std::exp(-gamma * t)) * ( 1 - std::exp(-gamma * t)))/(PI*R0*R0);
+            }
+
+            if(r < 0.01 && j == Nz - 1){
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
+                coefficients.emplace_back(k, vectoridx(i, j-1, Nz), -1.0);
+            }
+
+            if(i == 0){
+                // Neumann at r = r0 boundary:
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), -1.0);
+                coefficients.emplace_back(k, vectoridx(i+1, j, Nz), 1.0);
+                continue;
+            }
+
+            if(i == Nr - 1){
+                // Neumann at outer r boundary
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
+                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                continue;
+            }
+
+            if(j == 0){
+                // Neumann at z = z0 boundary
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), -1.0);
+                coefficients.emplace_back(k, vectoridx(i, j+1, Nz), 1.0);
+                continue;
+            }
+            
 
             //coefficients for finite difference scheme for poisson equation
             double rPlus = r + dr / 2.0;
@@ -89,15 +95,135 @@ std::tuple<std::array<Eigen::VectorXd,2>, std::array<Eigen::VectorXd,2>> poisson
             double coeffz = 1.0 / dz2;
 
             // Fill matrix entries
-            coefficients.emplace_back(k, vectoridx(i, j), centre);
-            coefficients.emplace_back(k, vectoridx(i + 1, j), coeffPlusr);
-            coefficients.emplace_back(k, vectoridx(i - 1, j), coeffMinusr);
-            coefficients.emplace_back(k, vectoridx(i, j + 1), coeffz);
-            coefficients.emplace_back(k, vectoridx(i, j - 1), coeffz);
+            coefficients.emplace_back(k, vectoridx(i, j, Nz), centre);
+            coefficients.emplace_back(k, vectoridx(i + 1, j, Nz), coeffPlusr);
+            coefficients.emplace_back(k, vectoridx(i - 1, j, Nz), coeffMinusr);
+            coefficients.emplace_back(k, vectoridx(i, j + 1, Nz), coeffz);
+            coefficients.emplace_back(k, vectoridx(i, j - 1, Nz), coeffz);
+
+            
+        }
+    }
+    //build a sparse matrix
+    M.setFromTriplets(coefficients.begin(), coefficients.end());
+
+    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+    solver.analyzePattern(M);
+    solver.factorize(M);
+    Eigen::VectorXd phi = solver.solve(b);
+
+    return phi;
+}
+
+//set up current distribution
+std::array<double,2> current(double r, double z, double t, double x0, double dx, double y0, double dy, double Nr, double Nz, double gamma = 10847100){
+    Eigen::VectorXd phi = laplaceSolver(t,x0,dx,y0,dy,Nr,Nz);
+    int i = static_cast<int>(std::round((r - x0)/dx + 1.5));
+    int j = static_cast<int>(std::round((z - y0)/dy + 1.5));
+
+    // Ensure i and j are within valid bounds (1..Nr-2 and 1..Nz-2 for central differences)
+    if (i <= 0){i = 1;}
+    if (i >= Nr - 1){i = Nr - 2;}
+    if (j <= 0){ j = 1;}
+    if (j >= Nz - 1){ j = Nz - 2;}
+
+    int k_ip = vectoridx(i+1, j, Nz);
+    int k_im = vectoridx(i-1, j, Nz);
+    int k_jp = vectoridx(i, j+1, Nz);
+    int k_jm = vectoridx(i, j-1, Nz);
+
+    double Jr = (phi[k_ip] - phi[k_im]) / (2*dx);
+    double Jz = (phi[k_jp] - phi[k_jm]) / (2*dy);
+
+
+
+    double I = I0 * (std::exp(-alpha * t) - std::exp(-beta * t)) * ( 1 - std::exp(-gamma * t)) * ( 1 - std::exp(-gamma * t));
+    std::array<double,2> J;
+    // J[1] = - (I/PI*R0*R0) * std::exp(-(r/R0)*(r/R0));
+    // J[0] = 0;
+
+    J[0] = Jr;
+    J[1] = Jz;
+    return J;
+}
+
+//solve the sparse matrix linear system
+std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverR(double t, double x0, double dx, double y0, double dy, double Nr, double Nz){
+    double dr = dx;
+    double dz = dy;
+    double dr2 = dr * dr;
+    double dz2 = dz * dz;
+    int N = Nr * Nz;
+    double r0 = x0;
+    double z0 = y0;
+
+    Eigen::SparseMatrix<double> M(N,N);
+    Eigen::VectorXd bR = Eigen::VectorXd::Zero(N);
+    Eigen::VectorXd bZ = Eigen::VectorXd::Zero(N);
+    std::vector<Eigen::Triplet<double>> coefficients;
+
+    //set up matrix
+    for(int i =0; i < Nr; ++i){
+        double r = r0 + (i - 1.5)* dr;
+
+        for(int j =0; j < Nz; ++j){
+            int k = vectoridx(i,j, Nz);
+            double z = z0 + (j - 1.5) * dz;
 
             //RHS
-            bR[k] = -current(r,z,t)[0];
-            bZ[k] = -current(r,z,t)[1];
+            bR[k] = -current(r, z, t, x0, dx, y0, dy, Nr, Nz)[0];
+            bZ[k] = -current(r, z, t, x0, dx, y0, dy, Nr, Nz)[1];
+
+            //boundary conditions
+            if(j == Nz - 1){
+                //dirichlet conditions
+                coefficients.emplace_back(k,k,1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+            if(i == 0){
+                // Neumann at r = r0 boundary:
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), -1.0);
+                coefficients.emplace_back(k, vectoridx(i+1, j, Nz), 1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+
+            if(i == Nr - 1){
+                // Neumann at outer r boundary
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
+                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+
+            if(j == 0){
+                //dirichlet conditions
+                coefficients.emplace_back(k,k,1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+            else{
+                //coefficients for finite difference scheme for poisson equation
+                double rPlus = r + dr / 2.0;
+                double rMinus = r - dr / 2.0;
+                double centre = -2.0 / dr2 - 2.0 / dz2;
+                double coeffPlusr = (1.0 + dr / (2.0*r)) / dr2;
+                double coeffMinusr = (1.0 - dr / (2.0*r)) / dr2;
+                double coeffz = 1.0 / dz2;
+
+                // Fill matrix entries
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), centre);
+                coefficients.emplace_back(k, vectoridx(i + 1, j, Nz), coeffPlusr);
+                coefficients.emplace_back(k, vectoridx(i - 1, j, Nz), coeffMinusr);
+                coefficients.emplace_back(k, vectoridx(i, j + 1, Nz), coeffz);
+                coefficients.emplace_back(k, vectoridx(i, j - 1, Nz), coeffz);
+            }
+            
         }
     }
 
@@ -108,24 +234,105 @@ std::tuple<std::array<Eigen::VectorXd,2>, std::array<Eigen::VectorXd,2>> poisson
     solver.analyzePattern(M);
     solver.factorize(M);
     Eigen::VectorXd AR = solver.solve(bR);
+
+    return {AR,bR};
+}
+
+//solve the sparse matrix linear system
+std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverZ(double t, double x0, double dx, double y0, double dy, double Nr, double Nz){
+    double dr = dx;
+    double dz = dy;
+    double dr2 = dr * dr;
+    double dz2 = dz * dz;
+    int N = Nr * Nz;
+    double r0 = x0;
+    double z0 = y0;
+
+    Eigen::SparseMatrix<double> M(N,N);
+    Eigen::VectorXd bR = Eigen::VectorXd::Zero(N);
+    Eigen::VectorXd bZ = Eigen::VectorXd::Zero(N);
+    std::vector<Eigen::Triplet<double>> coefficients;
+
+    //set up matrix
+    for(int i =0; i < Nr; ++i){
+        double r = r0 + (i - 1.5)* dr;
+
+        for(int j =0; j < Nz; ++j){
+            int k = vectoridx(i,j, Nz);
+            double z = z0 + (j - 1.5) * dz;
+
+            //RHS
+            bR[k] = -current(r, z, t, x0, dx, y0, dy, Nr, Nz)[0];
+            bZ[k] = -current(r, z, t, x0, dx, y0, dy, Nr, Nz)[1];
+
+            //boundary conditions
+            if(j == Nz - 1){
+                // Neumann 
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
+                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+            if(i == 0){
+                // Neumann 
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
+                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+
+            if(i == Nr - 1){
+                //dirichlet conditions
+                coefficients.emplace_back(k,k,1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+
+            if(j == 0){
+                // Neumann 
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
+                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                bR[k] = 0.0;
+                bZ[k] = 0.0;
+                continue;
+            }
+            else{
+                //coefficients for finite difference scheme for poisson equation
+                double rPlus = r + dr / 2.0;
+                double rMinus = r - dr / 2.0;
+                double centre = -2.0 / dr2 - 2.0 / dz2;
+                double coeffPlusr = (1.0 + dr / (2.0*r)) / dr2;
+                double coeffMinusr = (1.0 - dr / (2.0*r)) / dr2;
+                double coeffz = 1.0 / dz2;
+
+                // Fill matrix entries
+                coefficients.emplace_back(k, vectoridx(i, j, Nz), centre);
+                coefficients.emplace_back(k, vectoridx(i + 1, j, Nz), coeffPlusr);
+                coefficients.emplace_back(k, vectoridx(i - 1, j, Nz), coeffMinusr);
+                coefficients.emplace_back(k, vectoridx(i, j + 1, Nz), coeffz);
+                coefficients.emplace_back(k, vectoridx(i, j - 1, Nz), coeffz);
+            }
+        }
+    }
+
+    //build a sparse matrix
+    M.setFromTriplets(coefficients.begin(), coefficients.end());
+
+    Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+    solver.analyzePattern(M);
+    solver.factorize(M);
     Eigen::VectorXd AZ = solver.solve(bZ);
 
-    std::array<Eigen::VectorXd,2> A;
-    A[0] = AR;
-    A[1] = AZ;
-
-    std::array<Eigen::VectorXd,2> J;
-    J[0] = bR;
-    J[1] = bZ;
-
-    return {A,J};
+    return {AZ,bZ};
 }
 
 //function to now retrive the magnetic feild from the magnetic potential
-std::vector<double> magneticfield(double t, double dx, double dy){
-    auto [A,J] = poissonSolver(t);
-    Eigen::VectorXd Ar = A[0];
-    Eigen::VectorXd Az = A[1];
+std::vector<double> magneticfield1(double t, double x0, double dx, double y0, double dy, int nxCells, int nyCells){
+    auto [Ar,Jr] = poissonSolverR(t, x0, dx,y0, dy,nxCells, nyCells);
+    auto [Az,Jz] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
 
     //need to find first derviatives in both for the magnetic field
     std::vector<double> Br(Ar.size());
@@ -157,13 +364,88 @@ std::vector<double> magneticfield(double t, double dx, double dy){
     return B;
 }
 
-big_array momentumUpdate(big_array u, double dx, double dy, double t, double dt){
-    auto [A,J] = poissonSolver(t);
-    Eigen::VectorXd Jz(u.size());
-    Jz = J[1];
+std::vector<double> magneticfield(double t, double x0, double dx, double y0, double dy, int nxCells, int nyCells){
+    auto [Ar,Jr] = poissonSolverR(t, x0, dx,y0, dy,nxCells, nyCells);
+    auto [Az,Jz] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
+
+    std::vector<double> Btheta(nxCells * nyCells, 0.0);
+
+    // Interior points (central differences)
+    for (int i = 1; i < nxCells - 1; i++) {
+        for (int j = 1; j < nyCells - 1; j++) {
+            int k = vectoridx(i, j, nyCells);
+
+            double dAr_dz = (Ar[vectoridx(i, j+1, nyCells)] - Ar[vectoridx(i, j-1, nyCells)]) / (2.0 * dy);
+            double dAz_dr = (Az[vectoridx(i+1, j, nyCells)] - Az[vectoridx(i-1, j, nyCells)]) / (2.0 * dx);
+
+            Btheta[k] = dAr_dz - dAz_dr;
+        }
+    }
+
+    // Boundaries - use one-sided finite differences
+
+    // Left edge i = 0
+    for (int j = 0; j < nyCells; j++) {
+        int k = vectoridx(0, j, nyCells);
+        int k_right = vectoridx(1, j, nyCells);
+        int k_up = vectoridx(0, std::min(j+1, nyCells-1), nyCells);
+        int k_down = vectoridx(0, std::max(j-1, 0), nyCells);
+
+        double dAr_dz = (Ar[k_up] - Ar[k_down]) / (2.0 * dy);
+        double dAz_dr = (Az[k_right] - Az[k]) / dx;  // forward difference
+
+        Btheta[k] = dAr_dz - dAz_dr;
+    }
+
+    // Right edge i = nxCells - 1
+    for (int j = 0; j < nyCells; j++) {
+        int k = vectoridx(nxCells - 1, j, nyCells);
+        int k_left = vectoridx(nxCells - 2, j, nyCells);
+        int k_up = vectoridx(nxCells - 1, std::min(j+1, nyCells-1), nyCells);
+        int k_down = vectoridx(nxCells - 1, std::max(j-1, 0), nyCells);
+
+        double dAr_dz = (Ar[k_up] - Ar[k_down]) / (2.0 * dy);
+        double dAz_dr = (Az[k] - Az[k_left]) / dx;  // backward difference
+
+        Btheta[k] = dAr_dz - dAz_dr;
+    }
+
+    // Bottom edge j = 0
+    for (int i = 0; i < nxCells; i++) {
+        int k = vectoridx(i, 0, nyCells);
+        int k_right = vectoridx(std::min(i+1, nxCells-1), 0, nyCells);
+        int k_left = vectoridx(std::max(i-1, 0), 0, nyCells);
+        int k_up = vectoridx(i, 1, nyCells);
+
+        double dAr_dz = (Ar[k_up] - Ar[k]) / dy;  // forward difference
+        double dAz_dr = (Az[k_right] - Az[k_left]) / (2.0 * dx);
+
+        Btheta[k] = dAr_dz - dAz_dr;
+    }
+
+    // Top edge j = nyCells - 1
+    for (int i = 0; i < nxCells; i++) {
+        int k = vectoridx(i, nyCells - 1, nyCells);
+        int k_right = vectoridx(std::min(i+1, nxCells-1), nyCells - 1, nyCells);
+        int k_left = vectoridx(std::max(i-1, 0), nyCells - 1, nyCells);
+        int k_down = vectoridx(i, nyCells - 2, nyCells);
+
+        double dAr_dz = (Ar[k] - Ar[k_down]) / dy;  // backward difference
+        double dAz_dr = (Az[k_right] - Az[k_left]) / (2.0 * dx);
+
+        Btheta[k] = dAr_dz - dAz_dr;
+    }
+
+    return Btheta;
+}
+
+
+big_array momentumUpdate(big_array u, double x0, double dx, double y0, double dy, double t, double dt, int nxCells, int nyCells){
+    auto [Ar,Jr] = poissonSolverR(t, x0, dx,y0, dy,nxCells, nyCells);
+    auto [Az,Jz] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
 
     std::vector<double> B(u.size());
-    B = magneticfield(t,dx,dy);
+    B = magneticfield(t,x0,dx,y0,dy, nxCells, nyCells);
 
     big_array update(u.size());
     update.resize(u.size(), std::vector<std::array<double, 4> >(u[0].size())); //set up update
@@ -179,7 +461,7 @@ big_array momentumUpdate(big_array u, double dx, double dy, double t, double dt)
     for(int j =0; j<u[0].size(); j++){
         for(int i = 0; i < u.size(); i++) { 
         
-            double r = x0 + (i-0.5) * dx;
+            double r = x0 + (i-1.5) * dx;
             double mom = u[i][j][1];
 
             double mom1 = mom + dt * cross[i];
@@ -192,13 +474,12 @@ big_array momentumUpdate(big_array u, double dx, double dy, double t, double dt)
 }
 
 //use euler method to update energy
-big_array energyUpdate(big_array u, double dx, double dy, double t, double dt){
-    auto [A,J] = poissonSolver(t);
-    Eigen::VectorXd Jz(u.size());
-    Jz = J[1];
+big_array energyUpdate(big_array u, double x0, double dx, double y0, double dy, double t, double dt, int nxCells, int nyCells){
+    auto [Ar,Jr] = poissonSolverR(t, x0, dx,y0, dy,nxCells, nyCells);
+    auto [Az,Jz] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
 
     std::vector<double> B(u.size());
-    B = magneticfield(t,dx,dy);
+    B = magneticfield(t,x0,dx,y0,dy, nxCells, nyCells);
 
     big_array update(u.size());
     update.resize(u.size(), std::vector<std::array<double, 4> >(u[0].size())); //set up update
@@ -214,7 +495,7 @@ big_array energyUpdate(big_array u, double dx, double dy, double t, double dt){
     for(int j =0; j<u[0].size(); j++){
         for(int i = 0; i < u.size(); i++) { 
         
-            double r = x0 + (i-0.5) * dx;
+            double r = x0 + (i-1.5) * dx;
             double v = u[i][j][1] / u[i][j][0];
             double mom = u[i][j][1];
 
@@ -1159,16 +1440,16 @@ std::vector<std::vector<std::array<double, 4> > > YthenX(std::vector<std::vector
 }
 
 int main(){
+    double tStart = 0.0;
+    double tStop = 0.25 / std::pow(10, 2.5);
+    double C = 0.8;
+    double omega =0;
     int nxCells = 100;
     int nyCells = 100;
     double x0 = -1.0;
     double x1 = 1.0;
     double y0 = -1.0;
     double y1 = 1.0;
-    double tStart = 0.0;
-    double tStop = 0.25 / std::pow(10, 2.5);
-    double C = 0.8;
-    double omega =0;
 
     std::vector<std::vector<std::array<double, 4> > > u;
     u.resize(nxCells+4, std::vector<std::array<double, 4> >(nyCells + 4)); //set up u
@@ -1228,6 +1509,10 @@ int main(){
             }
         }
         applyBoundaryConditions(u , nxCells , nyCells);
+
+        //update resistive source terms
+        u = momentumUpdate(u, x0, dx,y0, dy, t, dt, nxCells, nyCells);
+        u = energyUpdate(u, x0, dx,y0, dy, t, dt, nxCells, nyCells);
     }while(t<tStop);
 
     //now convert back to primitive

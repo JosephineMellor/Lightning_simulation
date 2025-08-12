@@ -16,7 +16,7 @@ typedef std::array<double,3> array;
 typedef std::vector<std::array<double,3>> big_array;
 
 const double PI = 3.141592653589793;
-const double r0 = 2e-3; //2mm in meters
+const double r0 = 2e-2; //2cm in meters
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -690,9 +690,9 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
-    double x1 = 1.0;
+    double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.25/std::pow(10,2.5);
+    double tStop = 1e-5;
     double C = 0.8;
     double omega = 0;
 
@@ -713,15 +713,19 @@ int main() {
         // x 0 is at point i=1/2
         double x = x0 + (i-0.5) * dx;
         std::array<double, 3> prim;
-        if(x <= 0.4) {
-            prim[0] = 1; // Density
-            prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 1*std::pow(10,5); // Pressure
-            } else {
-            prim[0] = 0.125; // Density
-            prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 0.1*std::pow(10,5); // Pressure
-        }
+        // if(x <= 0.4) {
+        //     prim[0] = 1; // Density
+        //     prim[1] = 0*std::pow(10,2.5); // Velocity
+        //     prim[2] = 1*std::pow(10,5); // Pressure
+        //     } else {
+        //     prim[0] = 0.125; // Density
+        //     prim[1] = 0*std::pow(10,2.5); // Velocity
+        //     prim[2] = 0.1*std::pow(10,5); // Pressure
+        // }
+
+        prim[0] = 1.225; // Density
+        prim[1] = 0*std::pow(10,2.5); // Velocity
+        prim[2] = 101325 + 2e6*std::exp(-(x/r0)*(x/r0)); // Pressure
 
         u[i] = PrimativeToConservative(prim);
         array v = ConservativeToPrimative(u[i]);
@@ -802,17 +806,17 @@ int main() {
 
 
         // Output data at specific time steps
-        while (t >= 1e-5 * counter) {
-            big_array results(u.size());
+        // while (t >= 1e-5 * counter) {
+        //     big_array results(u.size());
 
-            for (int i = 0; i <= results.size() - 1; ++i) {
-                results[i] = ConservativeToPrimative(u[i]);
-            }
+        //     for (int i = 0; i <= results.size() - 1; ++i) {
+        //         results[i] = ConservativeToPrimative(u[i]);
+        //     }
 
-            SaveWrappedData(results, x0, dx, nCells, counter);
-            std::cout << "Saved frame: " << counter << std::endl;
-            counter += 1;
-        }
+        //     SaveWrappedData(results, x0, dx, nCells, counter);
+        //     std::cout << "Saved frame: " << counter << std::endl;
+        //     counter += 1;
+        // }
 
         //update resistive source terms
         u = momentumUpdate(u, x0, dx, t, dt);
