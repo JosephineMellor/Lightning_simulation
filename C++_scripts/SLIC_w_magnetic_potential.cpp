@@ -819,8 +819,8 @@ int main() {
         // }
 
         //update resistive source terms
-        u = momentumUpdate(u, x0, dx, t, dt);
-        u = energyUpdate(u, x0, dx, t, dt);
+        // u = momentumUpdate(u, x0, dx, t, dt);
+        // u = energyUpdate(u, x0, dx, t, dt);
                 
                
     } while (t < tStop);
