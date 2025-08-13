@@ -912,9 +912,198 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     return update;
 }
 
-// double thermalSourceTerm(big_array u, double x0, double dx, double t, double dt){
+//function to find the sound speed with bilinear interpolation, assumming you know the conservative form
+double SoundSpeed(array u){
+    array prim = ConservativeToPrimative(u);
 
-// }
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double ss_NE = sound_speeds[pressure_top_i][density_top_i];
+    double ss_SE = sound_speeds[pressure_bottom_i][density_top_i];
+    double ss_SW = sound_speeds[pressure_bottom_i][density_bottom_i];
+    double ss_NW = sound_speeds[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double sound_speed = BilinearInterpolation(ss_NE , ss_SE , ss_SW , ss_NW , density_ratio , pressure_ratio);  
+    
+    return sound_speed;
+}
+
+//function to interpolate generally
+double interpolate(array u, data_table dataTable){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double NE = dataTable[pressure_top_i][density_top_i];
+    double SE = dataTable[pressure_bottom_i][density_top_i];
+    double SW = dataTable[pressure_bottom_i][density_bottom_i];
+    double NW = dataTable[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double value = BilinearInterpolation(NE , SE , SW , NW , density_ratio , pressure_ratio);  
+    
+    return value;
+}
+
+big_array thermalSourceTerm(big_array u, double x0, double dx, double t, double dt){
+    //store the heat of formation at each space step
+    std::vector<double> heat_of_formation(u.size());
+
+    //store the temperature at each space step
+    std::vector<double> current_temperature(u.size());
+
+    //store the following velocity squared at each space step
+    std::vector<double> current_velocity2(u.size());
+
+    for(int i=0; i<u.size(); i++){
+        //array to store the current mass fractions at each space step
+        std::array<double, 19> masses;
+        for(int j =0; j<19; j++){
+            masses[j]= interpolate(u[i],mass_fractions[j]);
+            heat_of_formation[i] += masses[j] * heats_of_formation[j];
+        }
+
+        current_temperature[i] = temperature(u[i]);
+
+        if(i != u.size() - 1){current_velocity2[i] = u[i][1]*u[i][1];}
+        else{continue;}
+    }
+
+    big_array update(u.size());
+    update = u;
+    double kappa = 60;
+    double maxwell_botz = 0.5;
+
+    for(int i=0; i<u.size(); i++){
+        update[i][2] += dt * (maxwell_botz*kappa*(std::pow(current_temperature[i], 4) - std::pow(T0,4)) - u[i][0]*(heat_of_formation[i] + 0.5*current_velocity2[i]));
+    }
+
+    return update;
+    
+}
+
+
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
