@@ -16,7 +16,7 @@ typedef std::array<double,3> array;
 typedef std::vector<std::array<double,3>> big_array;
 
 const double PI = 3.141592653589793;
-const double r0 = 2e-2; //2cm in meters
+const double r0 = 2e-3; //2mm in meters
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -421,22 +421,8 @@ void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x
             out << x << " " << y << " " << rho << "\n";
         }
         out << "\n"; // Separate rings
-
-        // out<< r << results[i][0]<<results[i][1]<<results[i][2]<<"\n";
     }
     out.close();
-}
-
-void storeTimeData(const double pressure, int counter, std::array<double, 24> results){
-    results[counter] = pressure ;
-}
-
-void PlotWithTime(std::array<double, 24> results){
-    std::string filename = "SLIC.dat";
-    std::ofstream out(filename);
-    for(int i=0; i<24; i++){
-        out<< i << " "<<results[i]<<"\n";
-    }
 }
 
 //define a general flux function 
@@ -700,6 +686,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     
     return update;
 }
+
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
@@ -717,7 +704,6 @@ int main() {
     big_array  uBarHalfL(u.size());
     big_array  uBarHalfR(u.size());
     big_array  uPlus1(u.size());
-    //std::array<double, 24> results;
     double dx = (x1 - x0) / nCells; //the space steps 
     double time;
 
@@ -737,12 +723,8 @@ int main() {
             prim[2] = 0.1*std::pow(10,5); // Pressure
         }
 
-        // prim[0] = 1.225; // Density
-        // prim[1] = 0*std::pow(10,2.5); // Velocity
-        // prim[2] = 101325 + 2e6*std::exp(-(x/r0)*(x/r0)); // Pressure
-
         u[i] = PrimativeToConservative(prim);
-        // array v = ConservativeToPrimative(u[i]);
+        array v = ConservativeToPrimative(u[i]);
     }
 
     double dt = computeTimeStep(u , C , dx); //the time steps
@@ -817,7 +799,7 @@ int main() {
     
         // Now replace u with the updated data for the next time step
         u = uPlus1;
-        
+
 
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
@@ -828,7 +810,6 @@ int main() {
             }
 
             SaveWrappedData(results, x0, dx, nCells, counter);
-            // storeTimeData(u[u.size()-1][2], counter, results);
             std::cout << "Saved frame: " << counter << std::endl;
             counter += 1;
         }
@@ -840,7 +821,6 @@ int main() {
                
     } while (t < tStop);
 
-    // PlotWithTime(results);
     //still need to convert it back to primitive
 
     //define final results
@@ -856,11 +836,11 @@ int main() {
     std::string filename = "euler.dat";
     std::ofstream output(filename);
     for (int i = 0; i <= nCells+3; ++i) {
-        double x = x0 + (i - 1.5) * dx;
+        double x = x0 + (i - 1) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
     }
 
     //wrap data around the r=0 axis
-    SaveWrappedData(results, x0, dx, nCells, counter);
+    //SaveWrappedData(results, x0, dx, nCells, counter);
     
 }

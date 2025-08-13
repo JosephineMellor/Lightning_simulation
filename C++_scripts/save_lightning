@@ -27,4 +27,3 @@ set title "Density Evolution for Cylindrical Sod Test"
 do for [i=0:79] {
     splot sprintf('wrapped_%d.dat', i) using 1:2:3 with pm3d notitle
 }
-
