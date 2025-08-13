@@ -405,13 +405,167 @@ double SoundSpeed(array u){
     return sound_speed;
 }
 
+//function to find the temperature with bilinear interpolation, assumming you know the conservative form
+double temperature(array u){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double t_NE = temperatures[pressure_top_i][density_top_i];
+    double t_SE = temperatures[pressure_bottom_i][density_top_i];
+    double t_SW = temperatures[pressure_bottom_i][density_bottom_i];
+    double t_NW = temperatures[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double temperature = BilinearInterpolation(t_NE , t_SE , t_SW , t_NW , density_ratio , pressure_ratio);  
+    
+    return temperature;
+}
+
+//function to find the thermal conductivity with bilinear interpolation, assumming you know the conservative form
+double thermalConductivity(array u){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double tc_NE = thermal_conductivity[pressure_top_i][density_top_i];
+    double tc_SE = thermal_conductivity[pressure_bottom_i][density_top_i];
+    double tc_SW = thermal_conductivity[pressure_bottom_i][density_bottom_i];
+    double tc_NW = thermal_conductivity[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double thermalConductivity = BilinearInterpolation(tc_NE , tc_SE , tc_SW , tc_NW , density_ratio , pressure_ratio);  
+    
+    return thermalConductivity;
+}
+
 //function to save data as spherically symmetric
 void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x0, double dx, int nCells, int index, int nTheta = 200) {
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
     for (int i = 0; i <= nCells+3; ++i) {
-        double r = x0 + (i - 1) * dx;
+        double r = x0 + (i) * dx;
         double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
 
         for (int j = 0; j < nTheta; ++j) {
@@ -511,7 +665,7 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
 
     for(int i = 0; i < u.size(); i++) { 
     
-        double r = x0 + (i-0.5) * dx;
+        double r = x0 + (i) * dx;
         double rho = u[i][0];
         double mom = u[i][1];
         double E = u[i][2];
@@ -558,18 +712,18 @@ void applyBoundaryConditions(big_array& u){
     // ----- REFLECTIVE ------
     u[0] = u[3];
     u[1] = u[2];
-    u[n - 1] = u[n - 4];
-    u[n - 2] = u[n - 3];
+    // u[n - 1] = u[n - 4];
+    // u[n - 2] = u[n - 3];
     u[0][1] = -u[3][1];
     u[1][1] = -u[2][1];
-    u[n - 1][1] = -u[n - 4][1];
-    u[n - 2][1] = -u[n - 3][1];
+    // u[n - 1][1] = -u[n - 4][1];
+    // u[n - 2][1] = -u[n - 3][1];
 
     // ----- TRANSMISSIVE -----
     // u[0] = u[3];
     // u[1] = u[2];
-    // u[n - 1] = u[n - 4];
-    // u[n - 2] = u[n - 3];
+    u[n - 1] = u[n - 4];
+    u[n - 2] = u[n - 3];
 
     // u[0] = u[1];
     // u[n - 1] = u[n - 2];
@@ -592,12 +746,13 @@ void ThomasAlorithm(const std::vector<double>& a, std::vector<double>& b,const s
 }
 
 //solve the poisson equation for magnetic potential
-std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 22708, double beta = 1294530, double gamma = 10847100, double I0 = 106405){
+std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 4137.95, double beta = 114866, double gamma = 10847100, double I0 = 218000){
     //set up initial data for current density with current I(t)
     double I = I0*(std::exp(-alpha * t) - std::exp(-beta * t))*(1 - std::exp(-gamma * t))*(1 - std::exp(-gamma * t));
+    I = I0*std::exp(-alpha*t)*std::sin(beta*t);
     std::vector<double> J(nCells);
     for (int i =0; i<nCells; i++){
-        double r = x0 + (i - 0.5)*dx;
+        double r = x0 + (i)*dx;
         J[i] = -I / (PI*r0*r0) * std::exp(-(r / r0)*(r / r0));
     }
 
@@ -663,7 +818,7 @@ big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt)
 
     for(int i = 0; i < u.size(); i++) { 
     
-        double r = x0 + (i-0.5) * dx;
+        double r = x0 + (i) * dx;
         double mom = u[i][1];
 
         double mom1 = mom + dt * cross[i];
@@ -690,7 +845,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
 
     for(int i = 0; i < u.size(); i++) { 
     
-        double r = x0 + (i-0.5) * dx;
+        double r = x0 + (i) * dx;
         double v = u[i][1] / u[i][0];
 
         double e1 = v * cross[i];
@@ -701,12 +856,13 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     return update;
 }
 
+
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
-    double x1 = 1.0;
+    double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.25/std::pow(10,2.5);
+    double tStop = 1/std::pow(10,6);
     double C = 0.8;
     double omega = 0;
 
@@ -725,21 +881,21 @@ int main() {
 
     for(int i = 0; i < u.size(); i++) {
         // x 0 is at point i=1/2
-        double x = x0 + (i-0.5) * dx;
+        double x = x0 + (i) * dx;
         std::array<double, 3> prim;
-        if(x <= 0.4) {
-            prim[0] = 1; // Density
-            prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 1*std::pow(10,5); // Pressure
-            } else {
-            prim[0] = 0.125; // Density
-            prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 0.1*std::pow(10,5); // Pressure
-        }
+        // if(x <= 0.4) {
+        //     prim[0] = 1; // Density
+        //     prim[1] = 0*std::pow(10,2.5); // Velocity
+        //     prim[2] = 1*std::pow(10,5); // Pressure
+        //     } else {
+        //     prim[0] = 0.125; // Density
+        //     prim[1] = 0*std::pow(10,2.5); // Velocity
+        //     prim[2] = 0.1*std::pow(10,5); // Pressure
+        // }
 
-        // prim[0] = 1.225; // Density
-        // prim[1] = 0*std::pow(10,2.5); // Velocity
-        // prim[2] = 101325 + 2e6*std::exp(-(x/r0)*(x/r0)); // Pressure
+        prim[0] = 1.225; // Density
+        prim[1] = 0*std::pow(10,2.5); // Velocity
+        prim[2] = 101325 + 2e6*std::exp(-(x/r0)*(x/r0)); // Pressure
 
         u[i] = PrimativeToConservative(prim);
         // array v = ConservativeToPrimative(u[i]);
@@ -838,7 +994,7 @@ int main() {
         u = energyUpdate(u, x0, dx, t, dt);
                 
                
-    } while (t < tStop);
+    } while (t < tStop || dt>1e-15);
 
     // PlotWithTime(results);
     //still need to convert it back to primitive
@@ -856,7 +1012,7 @@ int main() {
     std::string filename = "euler.dat";
     std::ofstream output(filename);
     for (int i = 0; i <= nCells+3; ++i) {
-        double x = x0 + (i - 0.5) * dx;
+        double x = x0 + (i) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
     }
 
