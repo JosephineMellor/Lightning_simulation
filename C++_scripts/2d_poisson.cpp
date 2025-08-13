@@ -58,6 +58,7 @@ Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double 
             if(r < 0.01 && j == Nz - 1){
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
                 coefficients.emplace_back(k, vectoridx(i, j-1, Nz), -1.0);
+                //coefficients.emplace_back(k,k,1.0);
                 continue;
             }
 
@@ -65,6 +66,7 @@ Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double 
                 // Neumann at r = r0 boundary:
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), -1.0);
                 coefficients.emplace_back(k, vectoridx(i+1, j, Nz), 1.0);
+                //coefficients.emplace_back(k,k,1.0);
                 continue;
             }
 
@@ -72,6 +74,7 @@ Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double 
                 // Neumann at outer r boundary
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
                 coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                //coefficients.emplace_back(k,k,1.0);
                 continue;
             }
 
@@ -79,6 +82,7 @@ Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double 
                 // Neumann at z = z0 boundary
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), -1.0);
                 coefficients.emplace_back(k, vectoridx(i, j+1, Nz), 1.0);
+                //coefficients.emplace_back(k,k,1.0);
                 continue;
             }
             
@@ -108,7 +112,6 @@ Eigen::VectorXd laplaceSolver(double t, double x0, double dx, double y0, double 
     solver.analyzePattern(M);
     solver.factorize(M);
     Eigen::VectorXd phi = solver.solve(b);
-    std::cout<<"laplace solved"<<std::endl;
 
     return phi;
 }
@@ -184,6 +187,7 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverR(double t, double x0,
                 // Neumann at r = r0 boundary:
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), -1.0);
                 coefficients.emplace_back(k, vectoridx(i+1, j, Nz), 1.0);
+                 //coefficients.emplace_back(k,k,1.0);
                 bR[k] = 0.0;
                 bZ[k] = 0.0;
                 continue;
@@ -193,6 +197,7 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverR(double t, double x0,
                 // Neumann at outer r boundary
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
                 coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                 //coefficients.emplace_back(k,k,1.0);
                 bR[k] = 0.0;
                 bZ[k] = 0.0;
                 continue;
@@ -232,7 +237,6 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverR(double t, double x0,
     solver.analyzePattern(M);
     solver.factorize(M);
     Eigen::VectorXd AR = solver.solve(bR);
-    std::cout<<"poisson solved"<<std::endl;
 
     return {AR,bR};
 }
@@ -269,7 +273,8 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverZ(double t, double x0,
             if(j == Nz - 1){
                 // Neumann 
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
-                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                coefficients.emplace_back(k, vectoridx(i, j-1, Nz), -1.0);
+                 //coefficients.emplace_back(k,k,1.0);
                 bR[k] = 0.0;
                 bZ[k] = 0.0;
                 continue;
@@ -277,7 +282,8 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverZ(double t, double x0,
             if(i == 0){
                 // Neumann 
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
-                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                coefficients.emplace_back(k, vectoridx(i+1, j, Nz), -1.0);
+                //coefficients.emplace_back(k,k,1.0);
                 bR[k] = 0.0;
                 bZ[k] = 0.0;
                 continue;
@@ -294,7 +300,8 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverZ(double t, double x0,
             if(j == 0){
                 // Neumann 
                 coefficients.emplace_back(k, vectoridx(i, j, Nz), 1.0);
-                coefficients.emplace_back(k, vectoridx(i-1, j, Nz), -1.0);
+                coefficients.emplace_back(k, vectoridx(i, j+1, Nz), -1.0);
+                 //coefficients.emplace_back(k,k,1.0);
                 bR[k] = 0.0;
                 bZ[k] = 0.0;
                 continue;
@@ -325,7 +332,6 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> poissonSolverZ(double t, double x0,
     solver.analyzePattern(M);
     solver.factorize(M);
     Eigen::VectorXd AZ = solver.solve(bZ);
-    std::cout<<"poisson solved"<<std::endl;
 
     return {AZ,bZ};
 }
@@ -436,7 +442,6 @@ std::vector<double> magneticfield(double t, double x0, double dx, double y0, dou
 
         Btheta[k] = dAr_dz - dAz_dr;
     }
-    std::cout<<"magnetic feild"<<std::endl;
     return Btheta;
 }
 
@@ -470,8 +475,6 @@ big_array momentumUpdate(big_array u, double x0, double dx, double y0, double dy
             update[i][j][1] = mom1;
         }
     }
-
-    std::cout<<"momentum"<<std::endl;
     return update;
 }
 
@@ -506,8 +509,6 @@ big_array energyUpdate(big_array u, double x0, double dx, double y0, double dy, 
             update[i][j][1] = u[i][j][2] + dt * e1;
         }
     }
-    
-    std::cout<<"energy"<<std::endl;
     return update;
 }
 
@@ -1442,17 +1443,31 @@ std::vector<std::vector<std::array<double, 4> > > YthenX(std::vector<std::vector
     return uPlus1;
 }
 
+void SaveData(const big_array& results, double x0, double dx, double y0, double dy, int nxCells, int nyCells, int index, int nTheta = 200) {
+    std::string filename = "SLIC" + std::to_string(index) + ".dat";
+    std::ofstream output(filename);
+    for(int j = 1; j < nyCells+2; j++) { 
+        for(int i = 1; i < nxCells+2; i++) {
+            double x = x0 + (i - 1)*dx;
+            double y = y0 + (j - 1)*dy;
+            output << x << " " << y << " " << results[i][j][0] << " " << results[i][j][1] << " " << results[i][j][2] << " " << results[i][j][3] << std::endl;
+        }
+        output<<std::endl;
+    }
+    output.close();
+}
+
 int main(){
     double tStart = 0.0;
-    double tStop = 10e-6;
+    double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double omega =0;
     int nxCells = 100;
     int nyCells = 100;
-    double x0 = -0.04;
-    double x1 = 0.04;
-    double y0 = 0.0;
-    double y1 = 0.05;
+    double x0 = -1.0;
+    double x1 = 1.0;
+    double y0 = -1.0;
+    double y1 = 1.0;
 
     std::vector<std::vector<std::array<double, 4> > > u;
     u.resize(nxCells+4, std::vector<std::array<double, 4> >(nyCells + 4)); //set up u
@@ -1469,23 +1484,23 @@ int main(){
             double y = y0 + (j - 1.5) * dy;
 
             
-            // if ( std::sqrt(x*x + y*y)<=0.4) {
-            //     prim[0] = 1.0;
-            //     prim[1] = 0.0*std::pow(10,2.5);
-            //     prim[2] = 0.0*std::pow(10,2.5);
-            //     prim[3] = 1.0*1e5;  // pressure (p)
-            // } 
-            // else{
-            //     prim[0] = 0.125;
-            //     prim[1] = 0.0*std::pow(10,2.5);
-            //     prim[2] = 0.0*std::pow(10,2.5);
-            //     prim[3] = 0.1*1e5;
-            // }
+            if ( std::sqrt(x*x + y*y)<=0.4) {
+                prim[0] = 1.0;
+                prim[1] = 0.0*std::pow(10,2.5);
+                prim[2] = 0.0*std::pow(10,2.5);
+                prim[3] = 1.0*1e5;  // pressure (p)
+            } 
+            else{
+                prim[0] = 0.125;
+                prim[1] = 0.0*std::pow(10,2.5);
+                prim[2] = 0.0*std::pow(10,2.5);
+                prim[3] = 0.1*1e5;
+            }
 
-            prim[0] = 1.225; // Density
-            prim[1] = 0*std::pow(10,2.5); // Velocity
-            prim[2] = 0;
-            prim[3] = 101325 + 2e6*std::exp(-(x/R0)*(x/R0));  // Pressure
+            // prim[0] = 1.225; // Density
+            // prim[1] = 0*std::pow(10,2.5); // Velocity
+            // prim[2] = 0;
+            // prim[3] = 101325 + 2e6*std::exp(-(x/R0)*(x/R0));  // Pressure
 
             u[i][j] = PrimativeToConservative(prim);
         }
@@ -1495,6 +1510,7 @@ int main(){
     double dt;
     double t = tStart;
 
+    int counter =0;
     do{
         dt = ComputeTimeStep(u,C,dx,dy);
         t +=dt;
@@ -1517,9 +1533,26 @@ int main(){
         }
         applyBoundaryConditions(u , nxCells , nyCells);
 
+        // Output data at specific time steps
+        while (t >= 1e-5 * counter) {
+            std::vector<std::vector<std::array<double, 4> > > results;
+            results.resize(nxCells+2, std::vector<std::array<double, 4> >(nyCells + 2)); //results
+        
+            for(int j = 1; j < nyCells+2; j++) { 
+                for(int i = 1; i < nxCells+2; i++) {
+                    results[i][j] = ConservativeToPrimative(u[i][j]);
+                }
+            }
+
+            SaveData(results, x0, dx, y0, dy, nxCells, nyCells, counter);
+            std::cout << "Saved frame: " << counter << std::endl;
+            counter += 1;
+        }
+
         //update resistive source terms
         u = momentumUpdate(u, x0, dx,y0, dy, t, dt, nxCells, nyCells);
         u = energyUpdate(u, x0, dx,y0, dy, t, dt, nxCells, nyCells);
+        
     }while(t<tStop);
 
     //now convert back to primitive
