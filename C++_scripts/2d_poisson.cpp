@@ -1462,8 +1462,8 @@ int main(){
     double tStop = 0.25/std::pow(10,2.5);
     double C = 0.8;
     double omega =0;
-    int nxCells = 100;
-    int nyCells = 100;
+    int nxCells = 30;
+    int nyCells = 30;
     double x0 = -1.0;
     double x1 = 1.0;
     double y0 = -1.0;
