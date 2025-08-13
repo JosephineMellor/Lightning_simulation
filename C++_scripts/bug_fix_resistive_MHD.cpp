@@ -836,7 +836,7 @@ int main() {
     std::string filename = "euler.dat";
     std::ofstream output(filename);
     for (int i = 0; i <= nCells+3; ++i) {
-        double x = x0 + (i - 1) * dx;
+        double x = x0 + (i - 0.5) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
     }
 

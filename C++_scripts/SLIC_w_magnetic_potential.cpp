@@ -16,7 +16,7 @@ typedef std::array<double,3> array;
 typedef std::vector<std::array<double,3>> big_array;
 
 const double PI = 3.141592653589793;
-const double r0 = 2e-2; //2cm in meters
+const double r0 = 2e-3; //2cm in meters
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
@@ -700,6 +700,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     
     return update;
 }
+
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
@@ -717,7 +718,6 @@ int main() {
     big_array  uBarHalfL(u.size());
     big_array  uBarHalfR(u.size());
     big_array  uPlus1(u.size());
-    //std::array<double, 24> results;
     double dx = (x1 - x0) / nCells; //the space steps 
     double time;
 
@@ -856,7 +856,7 @@ int main() {
     std::string filename = "euler.dat";
     std::ofstream output(filename);
     for (int i = 0; i <= nCells+3; ++i) {
-        double x = x0 + (i - 1.5) * dx;
+        double x = x0 + (i - 0.5) * dx;
         output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
     }
 
