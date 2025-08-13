@@ -14,12 +14,15 @@ typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
 typedef std::array<double,3> array;
 typedef std::vector<std::array<double,3>> big_array;
+typedef std::array<double , 19> species_vec;
+typedef std::array<data_table, 19> species_tables;
 
 const double PI = 3.141592653589793;
 const double r0 = 2e-3; //2cm in meters
+const double T0 = 5000;
 
 //function to read in the data from the tabulated equation of state
-std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
+std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table, species_vec , species_tables> Plasma19(){
     
     //load the file
     std::ifstream file("Plasma19_EoS.txt"); 
@@ -29,6 +32,8 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
     int row = 0;
     data_vec densities;
     data_vec pressures;
+    species_vec heats_of_formation;
+    species_tables mass_fractions;
 
     //we want to save sound speeds, energies, temperatures, electrical conductivity and thermal conductivity in tables
     data_table sound_speeds(500, std::vector<double>(500));
@@ -40,6 +45,27 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
     //now loop over the data file row by row, we only want the fifth and sixth row for densities and pressures
     while(std::getline(file , line)){
         row++;
+
+        if( row ==6){
+            std::istringstream iss(line); //extract the line
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            } //put it temporarily in an array
+
+            //then save the heats of formation
+
+            for (int i = 0; i < 19; ++i) {
+                if (i < (int)row_data.size()) {
+                    heats_of_formation[i] = row_data[i];
+                } else {
+                    std::cerr << "Insufficient data in row 6 for heats_of_formation\n";
+                    exit(1);
+                }
+            }
+        }
 
         if( row ==10 || row ==12 ){
             std::istringstream iss(line); //extract the line
@@ -118,23 +144,51 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
             electrical_conductivity[row-1517] = std::move(row_data);
         }
 
-        //thermal conductivity
-        if( row >= 2018 && row< 2518){
-            std::istringstream iss(line); 
+        //mass fractions
+        for (int i = 0; i < 19; i++) {
+            int min_row = 501 * (i + 4) + 14;
+            int max_row = min_row + 500;
+            mass_fractions[i].resize(500, std::vector<double>(500));
 
-            big_vector row_data; 
+            if (row >= min_row && row < max_row) {
+                std::istringstream iss(line);
+
+                big_vector row_data;
+                double val;
+                while (iss >> val) {
+                    row_data.push_back(val);
+                }
+
+                mass_fractions[i][row - min_row] = std::move(row_data);
+            }
+        }
+
+
+        //thermal conductivity
+        if (row >= 12539 && row < 13039) {
+            std::istringstream iss(line);
+
+            big_vector row_data;
             double val;
             while (iss >> val) {
                 row_data.push_back(val);
             }
 
-            thermal_conductivity[row-2018] = std::move(row_data);
+            if(row_data.size() != 500){
+                std::cerr << "Row " << row << " for thermal conductivity has " << row_data.size() << " values, expected 500.\n";
+                exit(1);
+            }
+
+            thermal_conductivity[row - 12539] = std::move(row_data);
         }
+
     }
 
 
-    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity};
+
+    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity, heats_of_formation, mass_fractions};
 }
+
 
 //import our data tables and arrays as global variables
 
@@ -146,6 +200,8 @@ const auto& energies = std::get<3>(EoS_data);
 const auto& temperatures = std::get<4>(EoS_data);
 const auto& electrical_conductivity = std::get<5>(EoS_data);
 const auto& thermal_conductivity = std::get<6>(EoS_data);
+const auto& heats_of_formation = std::get<7>(EoS_data);
+const auto& mass_fractions = std::get<8>(EoS_data);
 
 //function to perform bilinear interpolation on a simplified grid (0,0) , (0,1) , (1,0) , (1,1)
 double BilinearInterpolation(double f_NE, double f_SE, double f_SW, double f_NW, double x, double y){
@@ -710,23 +766,23 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
 void applyBoundaryConditions(big_array& u){
     int n = u.size();
     // ----- REFLECTIVE ------
-    u[0] = u[3];
-    u[1] = u[2];
+    // u[0] = u[3];
+    // u[1] = u[2];
     // u[n - 1] = u[n - 4];
     // u[n - 2] = u[n - 3];
-    u[0][1] = -u[3][1];
-    u[1][1] = -u[2][1];
+    // u[0][1] = -u[3][1];
+    // u[1][1] = -u[2][1];
     // u[n - 1][1] = -u[n - 4][1];
     // u[n - 2][1] = -u[n - 3][1];
 
     // ----- TRANSMISSIVE -----
-    // u[0] = u[3];
-    // u[1] = u[2];
+    u[0] = u[3];
+    u[1] = u[2];
     u[n - 1] = u[n - 4];
     u[n - 2] = u[n - 3];
 
-    // u[0] = u[1];
-    // u[n - 1] = u[n - 2];
+    u[0] = u[1];
+    u[n - 1] = u[n - 2];
 }
 
 // a sub-diag, b main-diag, c sup-diag, d rhs, 
@@ -856,13 +912,15 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     return update;
 }
 
+// double thermalSourceTerm(big_array u, double x0, double dx, double t, double dt){
 
+// }
 int main() { 
     int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1/std::pow(10,6);
+    double tStop = 0e-6;
     double C = 0.8;
     double omega = 0;
 
@@ -913,6 +971,9 @@ int main() {
 
         // Update source terms
         u = SourceTermUpdate(u,x0,dx,dt);
+        //update resistive source terms
+        u = momentumUpdate(u, x0, dx, t, 0.5*dt);
+        u = energyUpdate(u, x0, dx, t, 0.5*dt);
 
         // Apply boundary conditions
         applyBoundaryConditions(u);
@@ -990,11 +1051,12 @@ int main() {
         }
 
         //update resistive source terms
-        u = momentumUpdate(u, x0, dx, t, dt);
-        u = energyUpdate(u, x0, dx, t, dt);
+        u = momentumUpdate(u, x0, dx, t, 0.5*dt);
+        u = energyUpdate(u, x0, dx, t, 0.5*dt);
+        
                 
                
-    } while (t < tStop || dt>1e-15);
+    } while (t < tStop);
 
     // PlotWithTime(results);
     //still need to convert it back to primitive
