@@ -638,6 +638,33 @@ void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x
     out.close();
 }
 
+
+
+
+//function to save data as 1 dimensional
+void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, double dx, int nCells, int index, int nTheta = 200) {
+    big_array results(u.size());
+    for(int i =0; i<u.size(); i++){
+        results[i] = ConservativeToPrimative(u[i]);
+    }
+    
+    std::string filename = "wrapped_" + std::to_string(index) + ".dat";
+    std::ofstream out(filename);
+    // std::ofstream out("wrapped.dat");
+    for (int i = 0; i <= nCells+3; ++i) {
+        double r = x0 + (i+0.5) * dx;
+        double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
+
+        double x = x0 + (i+0.5) * dx;
+        double temp = temperature(u[i]);
+        //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
+        out << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
+
+        // out<< r << results[i][0]<<results[i][1]<<results[i][2]<<"\n";
+    }
+    out.close();
+}
+
 void storeTimeData(const double pressure, int counter, std::array<double, 24> results){
     results[counter] = pressure ;
 }
@@ -856,6 +883,8 @@ std::vector<double> MagneticFeild(std::vector<double> A, double dx){
     return B;
 }
 
+
+
 //use euler method to update momentum
 big_array momentumUpdate1(big_array u, double x0, double dx, double t, double dt){
     // std::vector<double> A(u.size());
@@ -892,7 +921,7 @@ big_array momentumUpdate1(big_array u, double x0, double dx, double t, double dt
     
     return update;
 }
-
+//use RK3 method to update momentum
 big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt) {
     auto [A, J] = SolvePotential(t, x0, dx, u.size());
     std::vector<double> B = MagneticFeild(A, dx);
@@ -923,6 +952,7 @@ big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt)
 
     return update;
 }
+//use implicit method to update momentum
 big_array momentumUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
     big_array update = u;
@@ -954,14 +984,14 @@ big_array momentumUpdate_Implicit(big_array u, double x0, double dx, double t, d
         }
 
         // Check for convergence
-        if (max_diff < tol) {
-            std::cout << "[Implicit] Converged in " << iter + 1 << " iterations.\n";
-            break;
-        }
+        // if (max_diff < tol) {
+        //     std::cout << "[Implicit] Converged in " << iter + 1 << " iterations.\n";
+        //     break;
+        // }
 
-        if (iter == max_iter - 1) {
-            std::cerr << "[Implicit] WARNING: Did not converge after " << max_iter << " iterations.\n";
-        }
+        // if (iter == max_iter - 1) {
+        //     std::cerr << "[Implicit] WARNING: Did not converge after " << max_iter << " iterations.\n";
+        // }
     }
 
     update = guess;
@@ -1006,7 +1036,7 @@ big_array energyUpdate1(big_array u, double x0, double dx, double t, double dt){
     
     return update;
 }
-
+//use RK3 method to update energy
 big_array energyUpdate(big_array u, double x0, double dx, double t, double dt) {
     auto [A, J] = SolvePotential(t, x0, dx, u.size());
     std::vector<double> B = MagneticFeild(A, dx);
@@ -1037,7 +1067,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt) {
 
     return update;
 }
-
+//use implicit metho to update energy
 big_array energyUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
     big_array update = u;
@@ -1073,14 +1103,14 @@ big_array energyUpdate_Implicit(big_array u, double x0, double dx, double t, dou
         }
 
         // Check for convergence
-        if (max_diff < tol) {
-            std::cout << "[Implicit Energy] Converged in " << iter + 1 << " iterations.\n";
-            break;
-        }
+        // if (max_diff < tol) {
+        //     std::cout << "[Implicit Energy] Converged in " << iter + 1 << " iterations.\n";
+        //     break;
+        // }
 
-        if (iter == max_iter - 1) {
-            std::cerr << "[Implicit Energy] WARNING: Did not converge after " << max_iter << " iterations.\n";
-        }
+        // if (iter == max_iter - 1) {
+        //     std::cerr << "[Implicit Energy] WARNING: Did not converge after " << max_iter << " iterations.\n";
+        // }
     }
 
     update = guess;
@@ -1165,6 +1195,9 @@ double interpolate(array u, data_table dataTable){
     return value;
 }
 
+
+
+//use euler to update energy with radiation
 big_array thermalSourceTerm(big_array u,  double dt, double t, double dx, double x0, double nCells){
     //calculate the current density
     auto [A,J] = SolvePotential(t,x0,dx,nCells);
@@ -1212,6 +1245,137 @@ big_array thermalSourceTerm(big_array u,  double dt, double t, double dx, double
     return update;
     
 }
+//use implicit to update energy with radiation
+big_array thermalSourceTerm_Implicit(big_array u, double dt, double t, double dx, double x0, double nCells, int max_iter = 10, double tol = 1e-6) {
+    // Get current density
+    auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // use t + dt for implicit step
+
+    big_array update = u;
+    big_array guess = u;
+
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        double max_diff = 0.0;
+
+        for (int i = 0; i < u.size(); ++i) {
+            // --- Density and velocity ---
+            double rho = u[i][0];
+            double momentum = u[i][1];
+            double velocity2 = momentum * momentum / (rho * rho);
+
+            // --- Energy guess ---
+            double E_guess = guess[i][2];
+            double T_guess = temperature(guess[i]);
+
+            // --- Interpolate conductivity ---
+            double conductivity = interpolate(guess[i], electrical_conductivity);
+
+            // --- Heat of formation ---
+            double heat_of_formation = 0.0;
+            for (int j = 0; j < 19; ++j) {
+                double mass_frac = interpolate(guess[i], mass_fractions[j]);
+                heat_of_formation += mass_frac * heats_of_formation[j];
+            }
+
+            // --- Radiation term ---
+            double radiation = stefan_boltzmann * kappa * (std::pow(T_guess, 4) - std::pow(T0, 4));
+            double loss_term = radiation - rho * (heat_of_formation + 0.5 * velocity2);
+
+            // --- Joule heating ---
+            double joule = (1.0 / conductivity) * J[i] * J[i];
+
+            // --- Implicit update ---
+            double E_new = u[i][2] + dt * (joule - loss_term);
+
+            // --- Convergence check ---
+            double diff = std::abs(E_new - E_guess);
+            max_diff = std::max(max_diff, diff);
+
+            guess[i][2] = E_new;  // update guess
+        }
+
+        if (max_diff < tol) {
+            std::cout << "[Implicit Thermal] Converged in " << iter + 1 << " iterations.\n";
+            break;
+        }
+
+        if (iter == max_iter - 1) {
+            std::cerr << "[Implicit Thermal] WARNING: Did not converge after " << max_iter << " iterations.\n";
+        }
+    }
+
+    update = guess;
+    return update;
+}
+//use implicit to update energy with radiation
+big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, double x0, double nCells, int max_iter = 20, double tol = 1e-6) {
+    auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // use t + dt for implicit
+    big_array update = u;
+
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+    double epsilon = 1e-5;  // for finite difference
+
+    for (int i = 0; i < u.size(); ++i) {
+        double E_old = u[i][2];  // E^n
+        double E = E_old;        // initial guess E^0
+
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double velocity2 = (momentum / rho) * (momentum / rho);
+
+        // Precompute J²
+        double J2 = J[i] * J[i];
+
+        // Compute constant mass-fraction-based heat of formation
+        double heat_of_formation = 0.0;
+        for (int j = 0; j < 19; ++j) {
+            double mass_frac = interpolate(u[i], mass_fractions[j]);
+            heat_of_formation += mass_frac * heats_of_formation[j];
+        }
+
+        int iter = 0;
+        double diff = 1e9;
+
+        while (iter < max_iter && diff > tol) {
+            // T from energy guess
+            double T = temperature({rho, momentum, E});
+
+            // σ from E guess
+            double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+
+            // Radiation loss term S_T
+            double S_T = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+
+            // f(E)
+            double f = E - E_old - dt * ((1.0 / sigma) * J2 - S_T);
+
+            // f'(E) via finite difference
+            double E_eps = E + epsilon;
+
+            // T_eps from E+ε
+            double T_eps = temperature({rho, momentum, E_eps});
+            double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
+            double S_T_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+            double f_eps = E_eps - E_old - dt * ((1.0 / sigma_eps) * J2 - S_T_eps);
+
+            double df_dE = (f_eps - f) / epsilon;
+
+            // Newton step
+            double E_new = E - f / df_dE;
+            diff = std::abs(E_new - E);
+            E = E_new;
+            ++iter;
+        }
+
+
+        update[i][2] = E;  // set updated energy
+    }
+
+    return update;
+}
 
 
 int main() { 
@@ -1219,7 +1383,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1e-4;
+    double tStop = 1.5e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -1350,7 +1514,7 @@ int main() {
         }
 
         //radiation source term
-        // u = thermalSourceTerm(u, dt,t,dx,x0,nCells);
+        u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells);
         applyBoundaryConditions(u);
 
         //update resistive source terms
