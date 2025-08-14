@@ -18,7 +18,7 @@ typedef std::array<double , 19> species_vec;
 typedef std::array<data_table, 19> species_tables;
 
 const double PI = 3.141592653589793;
-const double r0 = 2e-3; //2cm in meters
+const double r0 = 2e-2; //2cm in meters
 const double T0 = 298;
 const double mu_0 = 4.0 * PI * 1e-7;
 
@@ -1383,7 +1383,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1.5e-4;
+    double tStop = 1.5555e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -1399,6 +1399,8 @@ int main() {
     double time;
 
     // Initial conditions!
+
+    std::ofstream out("wrapped.dat");
 
     for(int i = 0; i < u.size(); i++) {
         // x 0 is at point i=1/2
@@ -1416,15 +1418,22 @@ int main() {
 
         prim[0] = 1.225; // Density
         prim[1] = 0*std::pow(10,2.5); // Velocity
-        prim[2] = 101325 + 2e6*std::exp(-(x/r0)*(x/r0)); // Pressure
+        prim[2] = 101325 + 2.0*std::pow(10,6)*std::exp(-(x/r0)*(x/r0)); // Pressure
 
         u[i] = PrimativeToConservative(prim);
         // array v = ConservativeToPrimative(u[i]);
+
+        double temp = temperature(u[i]);
+        //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
+        out << x << " " << prim[0] <<  " " << prim[1] <<  " " << prim[2] << " " << temp<<std::endl;
     }
 
+    
+    
     double dt = computeTimeStep(u , C , dx); //the time steps
     double t = tStart;
     int counter =0;
+    SaveUnwrappedData(u, x0, dx, nCells, counter);
     do {
         // Compute the stable time step for this iteration
 
@@ -1502,7 +1511,7 @@ int main() {
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
             big_array results(u.size());
-
+            counter += 1;
             // for (int i = 0; i <= results.size() - 1; ++i) {
             //     results[i] = ConservativeToPrimative(u[i]);
             // }
@@ -1510,7 +1519,7 @@ int main() {
             SaveUnwrappedData(u, x0, dx, nCells, counter);
             // storeTimeData(u[u.size()-1][2], counter, results);
             std::cout << "Saved frame: " << counter << std::endl;
-            counter += 1;
+            
         }
 
         //radiation source term
@@ -1542,7 +1551,7 @@ int main() {
     //output
     std::string filename = "euler.dat";
     std::ofstream output(filename);
-    for (int i = 1; i <= nCells+2; ++i) {
+    for (int i = 2; i <= nCells+1; ++i) {
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
         //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
