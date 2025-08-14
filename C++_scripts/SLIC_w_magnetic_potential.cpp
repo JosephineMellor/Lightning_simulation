@@ -19,7 +19,7 @@ typedef std::array<data_table, 19> species_tables;
 
 const double PI = 3.141592653589793;
 const double r0 = 2e-3; //2cm in meters
-const double T0 = 5000;
+const double T0 = 237;
 
 //function to read in the data from the tabulated equation of state
 std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table, species_vec , species_tables> Plasma19(){
@@ -912,82 +912,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     return update;
 }
 
-//function to find the sound speed with bilinear interpolation, assumming you know the conservative form
-double SoundSpeed(array u){
-    array prim = ConservativeToPrimative(u);
 
-    //find our index for density with binary search
-    int point1 =0;
-    int point2 =499;
-    int half;
-    int density_index;
-    double rho = u[0]; 
-    while(std::abs(point1-point2)>1){
-        half = floor((point1+point2)/2);
-        if(rho > densities[half]){
-            point1 = half;
-        }
-        else{
-            point2 = half;
-        }
-    }
-
-    //handle boundary terms
-    if(point1 >= 499){point1 = 499;}
-    if(point2 >= 499){point2 = 499;}
-    if(point1 <=0){point1 = 0;}
-    if(point2 <=0){point2 = 0;}
-    
-    //set up the linear interpolation
-    double density_top = densities[point2];
-    int density_top_i = point2;
-    double density_bottom = densities[point1];
-    int density_bottom_i = point1;
-    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
-    if(density_bottom == density_top){density_ratio = 1;}
-    
-
-    //find our index for pressure also with linear bisection
-    point1 =0;
-    point2 =500;
-    half;
-    int pressure_index;
-    double p = prim[2];
-    while(std::abs(point1-point2)>1){
-        half = floor((point1+point2)/2);
-        if(p > pressures[half]){
-            point1 = half;
-        }
-        else{
-            point2 = half;
-        }
-    }
-
-    //handle boundary terms
-    if(point1 >= 499){point1 = 499;}
-    if(point2 >= 499){point2 = 499;}
-    if(point1 <=0){point1 = 0;}
-    if(point2 <=0){point2 = 0;}
-
-    //set up linear interpolation
-    double pressure_top = pressures[point2];
-    int pressure_top_i = point2;
-    double pressure_bottom = pressures[point1];
-    int pressure_bottom_i = point1;
-    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
-    if(pressure_bottom == pressure_top){pressure_ratio =1;}
-
-    //then apply to the energies table
-    double ss_NE = sound_speeds[pressure_top_i][density_top_i];
-    double ss_SE = sound_speeds[pressure_bottom_i][density_top_i];
-    double ss_SW = sound_speeds[pressure_bottom_i][density_bottom_i];
-    double ss_NW = sound_speeds[pressure_top_i][density_bottom_i];
-
-    //linear interpolate using our variables from before
-    double sound_speed = BilinearInterpolation(ss_NE , ss_SE , ss_SW , ss_NW , density_ratio , pressure_ratio);  
-    
-    return sound_speed;
-}
 
 //function to interpolate generally
 double interpolate(array u, data_table dataTable){
@@ -1066,7 +991,7 @@ double interpolate(array u, data_table dataTable){
     return value;
 }
 
-big_array thermalSourceTerm(big_array u, double x0, double dx, double t, double dt){
+big_array thermalSourceTerm(big_array u,  double dt){
     //store the heat of formation at each space step
     std::vector<double> heat_of_formation(u.size());
 
@@ -1086,17 +1011,17 @@ big_array thermalSourceTerm(big_array u, double x0, double dx, double t, double 
 
         current_temperature[i] = temperature(u[i]);
 
-        if(i != u.size() - 1){current_velocity2[i] = u[i][1]*u[i][1];}
+        if(i != u.size() - 1){current_velocity2[i] = u[i+1][1]*u[i+1][1];}
         else{continue;}
     }
 
     big_array update(u.size());
     update = u;
     double kappa = 60;
-    double maxwell_botz = 0.5;
+    double stephen_botz = 5.67e-8;
 
     for(int i=0; i<u.size(); i++){
-        update[i][2] += dt * (maxwell_botz*kappa*(std::pow(current_temperature[i], 4) - std::pow(T0,4)) - u[i][0]*(heat_of_formation[i] + 0.5*current_velocity2[i]));
+        update[i][2] += dt * (stephen_botz*kappa*(std::pow(current_temperature[i], 4) - std::pow(T0,4)) - u[i][0]*(heat_of_formation[i] + 0.5*current_velocity2[i]));
     }
 
     return update;
@@ -1109,7 +1034,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0e-6;
+    double tStop = 1.5e-6;
     double C = 0.8;
     double omega = 0;
 
@@ -1238,6 +1163,9 @@ int main() {
             std::cout << "Saved frame: " << counter << std::endl;
             counter += 1;
         }
+
+        //radiation source term
+        u = thermalSourceTerm(u, dt);
 
         //update resistive source terms
         u = momentumUpdate(u, x0, dx, t, 0.5*dt);
