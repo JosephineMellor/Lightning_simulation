@@ -651,7 +651,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
-    for (int i = 1; i <= nCells+2; ++i) {
+    for (int i = 2; i <= nCells+3; ++i) {
         double r = x0 + (i+0.5) * dx;
         double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
 
@@ -1379,11 +1379,11 @@ big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, 
 
 
 int main() { 
-    int nCells = 100; //the distance between points is 0.01
+    int nCells = 150; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1.5555e-4;
+    double tStop = 1.5e-4;
     double C = 0.8;
     double omega = 0;
 
