@@ -651,7 +651,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
-    for (int i = 0; i <= nCells+3; ++i) {
+    for (int i = 2; i <= nCells+1; ++i) {
         double r = x0 + (i+0.5) * dx;
         double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
 
