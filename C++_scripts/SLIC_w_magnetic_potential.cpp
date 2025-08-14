@@ -857,7 +857,7 @@ std::vector<double> MagneticFeild(std::vector<double> A, double dx){
 }
 
 //use euler method to update momentum
-big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt){
+big_array momentumUpdate1(big_array u, double x0, double dx, double t, double dt){
     // std::vector<double> A(u.size());
     // std::vector<double> J(u.size());
     auto [A,J] = SolvePotential(t, x0, dx, u.size());
@@ -893,7 +893,7 @@ big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt)
     return update;
 }
 
-big_array momentumUpdate1(big_array u, double x0, double dx, double t, double dt) {
+big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt) {
     auto [A, J] = SolvePotential(t, x0, dx, u.size());
     std::vector<double> B = MagneticFeild(A, dx);
 
@@ -923,10 +923,55 @@ big_array momentumUpdate1(big_array u, double x0, double dx, double t, double dt
 
     return update;
 }
+big_array momentumUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+    const int nCells = u.size();
+    big_array update = u;
+
+    // Initial guess: u^{n+1} ≈ u^n
+    big_array guess = u;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Step 1: Compute J and B based on current guess
+        auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // using t + dt for implicitness
+        std::vector<double> B = MagneticFeild(A, dx);
+
+        // Step 2: Compute cross product force
+        std::vector<double> cross(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            cross[i] = -J[i] * B[i];
+        }
+
+        // Step 3: Update momentum using implicit formula
+        double max_diff = 0.0;
+        for (int i = 0; i < nCells; ++i) {
+            double old_momentum = guess[i][1];
+            double new_momentum = u[i][1] + dt * cross[i];
+
+            guess[i][1] = new_momentum;
+
+            double diff = std::abs(new_momentum - old_momentum);
+            max_diff = std::max(max_diff, diff);
+        }
+
+        // Check for convergence
+        if (max_diff < tol) {
+            std::cout << "[Implicit] Converged in " << iter + 1 << " iterations.\n";
+            break;
+        }
+
+        if (iter == max_iter - 1) {
+            std::cerr << "[Implicit] WARNING: Did not converge after " << max_iter << " iterations.\n";
+        }
+    }
+
+    update = guess;
+    return update;
+}
+
 
 
 //use euler method to update energy
-big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
+big_array energyUpdate1(big_array u, double x0, double dx, double t, double dt){
     auto [A,J] = SolvePotential(t, x0, dx, u.size());
     std::vector<double> B(u.size());
     B = MagneticFeild(A,dx);
@@ -962,7 +1007,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
     return update;
 }
 
-big_array energyUpdate1(big_array u, double x0, double dx, double t, double dt) {
+big_array energyUpdate(big_array u, double x0, double dx, double t, double dt) {
     auto [A, J] = SolvePotential(t, x0, dx, u.size());
     std::vector<double> B = MagneticFeild(A, dx);
 
@@ -990,6 +1035,55 @@ big_array energyUpdate1(big_array u, double x0, double dx, double t, double dt) 
         update[i][2] = (1.0/3.0) * u[i][2] + (2.0/3.0) * (u2[i][2] + dt * cross[i]*u2[i][1]/u2[i][0]);  // final update
     }
 
+    return update;
+}
+
+big_array energyUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+    const int nCells = u.size();
+    big_array update = u;
+
+    // Initial guess for energy: E^{n+1} ≈ E^n
+    big_array guess = u;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Step 1: Compute J and B from guess (at t + dt)
+        auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);
+        std::vector<double> B = MagneticFeild(A, dx);
+
+        // Step 2: Compute cross product force and energy source
+        std::vector<double> energy_source(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            double rho = guess[i][0];
+            double momentum = guess[i][1];
+            double velocity = momentum / rho;
+
+            energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
+        }
+
+        // Step 3: Update energy and check convergence
+        double max_diff = 0.0;
+        for (int i = 0; i < nCells; ++i) {
+            double old_energy = guess[i][2];
+            double new_energy = u[i][2] + dt * energy_source[i];
+
+            guess[i][2] = new_energy;
+
+            double diff = std::abs(new_energy - old_energy);
+            max_diff = std::max(max_diff, diff);
+        }
+
+        // Check for convergence
+        if (max_diff < tol) {
+            std::cout << "[Implicit Energy] Converged in " << iter + 1 << " iterations.\n";
+            break;
+        }
+
+        if (iter == max_iter - 1) {
+            std::cerr << "[Implicit Energy] WARNING: Did not converge after " << max_iter << " iterations.\n";
+        }
+    }
+
+    update = guess;
     return update;
 }
 
@@ -1126,7 +1220,7 @@ int main() {
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
     double tStop = 1e-4;
-    double C = 0.1;
+    double C = 0.8;
     double omega = 0;
 
     // Allocate matrices with 2 extra points for transmissive BCs
@@ -1177,8 +1271,8 @@ int main() {
         // Update source terms
         u = SourceTermUpdate(u,x0,dx,dt);
         //update resistive source terms
-        u = momentumUpdate(u, x0, dx, t, 0.5*dt);
-        u = energyUpdate(u, x0, dx, t, 0.5*dt);
+        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
 
         // Apply boundary conditions
         applyBoundaryConditions(u);
@@ -1260,12 +1354,14 @@ int main() {
         applyBoundaryConditions(u);
 
         //update resistive source terms
-        u = momentumUpdate(u, x0, dx, t, 0.5*dt);
-        u = energyUpdate(u, x0, dx, t, 0.5*dt);
+        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         
                 
                
     } while (t < tStop);
+
+    applyBoundaryConditions(u);
 
     // PlotWithTime(results);
     //still need to convert it back to primitive
@@ -1284,7 +1380,9 @@ int main() {
     std::ofstream output(filename);
     for (int i = 0; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
-        output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
+        double temp = temperature(u[i]);
+        //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
+        output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
     }
 
     //wrap data around the r=0 axis
