@@ -19,7 +19,7 @@ typedef std::array<data_table, 19> species_tables;
 
 const double PI = 3.141592653589793;
 const double r0 = 2e-3; //2cm in meters
-const double T0 = 8000;
+const double T0 = 298;
 const double mu_0 = 4.0 * PI * 1e-7;
 
 //function to read in the data from the tabulated equation of state
@@ -1503,11 +1503,11 @@ int main() {
         while (t >= 1e-5 * counter) {
             big_array results(u.size());
 
-            for (int i = 0; i <= results.size() - 1; ++i) {
-                results[i] = ConservativeToPrimative(u[i]);
-            }
+            // for (int i = 0; i <= results.size() - 1; ++i) {
+            //     results[i] = ConservativeToPrimative(u[i]);
+            // }
 
-            SaveWrappedData(results, x0, dx, nCells, counter);
+            SaveUnwrappedData(u, x0, dx, nCells, counter);
             // storeTimeData(u[u.size()-1][2], counter, results);
             std::cout << "Saved frame: " << counter << std::endl;
             counter += 1;
@@ -1542,7 +1542,7 @@ int main() {
     //output
     std::string filename = "euler.dat";
     std::ofstream output(filename);
-    for (int i = 0; i <= nCells+3; ++i) {
+    for (int i = 2; i <= nCells+1; ++i) {
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
         //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
@@ -1550,6 +1550,6 @@ int main() {
     }
 
     //wrap data around the r=0 axis
-    SaveWrappedData(results, x0, dx, nCells, counter);
+    SaveUnwrappedData(u, x0, dx, nCells, counter);
     
 }
