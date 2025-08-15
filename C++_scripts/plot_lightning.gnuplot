@@ -1,5 +1,5 @@
 set terminal pngcairo size 1000,600
-set output "plasma19_density.png"
+set output "density.png"
 
 
 plot \
@@ -13,7 +13,7 @@ plot \
 
 
 set terminal pngcairo size 1000,600
-set output "plasma19_temperature.png"
+set output "temperature.png"
 
 
 plot \
@@ -27,7 +27,7 @@ plot \
 
 
 set terminal pngcairo size 1000,600
-set output "plasma19_pressure.png"
+set output "pressure.png"
 
 
 plot \
