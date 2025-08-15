@@ -1379,7 +1379,7 @@ big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, 
 
 
 int main() { 
-    int nCells = 150; //the distance between points is 0.01
+    int nCells = 500; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
