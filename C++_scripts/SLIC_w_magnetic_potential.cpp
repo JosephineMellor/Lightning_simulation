@@ -806,7 +806,7 @@ void applyBoundaryConditions(big_array& u){
     // ----- TRANSMISSIVE -----
     // u[0] = u[3];
     // u[1] = u[2];
-    u[n - 1] = u[n - 4];
+    u[n - 1] = u[n - 3];
     u[n - 2] = u[n - 3];
 
    
@@ -953,7 +953,7 @@ big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt)
     return update;
 }
 //use implicit method to update momentum
-big_array momentumUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+big_array momentumUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, std::vector<double> A, std::vector<double> J, std::vector<double> B, int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
     big_array update = u;
 
@@ -962,8 +962,8 @@ big_array momentumUpdate_Implicit(big_array u, double x0, double dx, double t, d
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // Step 1: Compute J and B based on current guess
-        auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // using t + dt for implicitness
-        std::vector<double> B = MagneticFeild(A, dx);
+        // auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // using t + dt for implicitness
+        // std::vector<double> B = MagneticFeild(A, dx);
 
         // Step 2: Compute cross product force
         std::vector<double> cross(nCells);
@@ -1068,7 +1068,7 @@ big_array energyUpdate(big_array u, double x0, double dx, double t, double dt) {
     return update;
 }
 //use implicit metho to update energy
-big_array energyUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+big_array energyUpdate_Implicit(big_array u, double x0, double dx, double t, double dt, std::vector<double> A, std::vector<double> J, std::vector<double> B,  int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
     big_array update = u;
 
@@ -1077,8 +1077,8 @@ big_array energyUpdate_Implicit(big_array u, double x0, double dx, double t, dou
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // Step 1: Compute J and B from guess (at t + dt)
-        auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);
-        std::vector<double> B = MagneticFeild(A, dx);
+        // auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);
+        // std::vector<double> B = MagneticFeild(A, dx);
 
         // Step 2: Compute cross product force and energy source
         std::vector<double> energy_source(nCells);
@@ -1310,8 +1310,8 @@ big_array thermalSourceTerm_Implicit(big_array u, double dt, double t, double dx
     return update;
 }
 //use implicit to update energy with radiation
-big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, double x0, double nCells, int max_iter = 20, double tol = 1e-6) {
-    auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // use t + dt for implicit
+big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, double x0, double nCells, std::vector<double> A, std::vector<double> J, std::vector<double> B,  int max_iter = 20, double tol = 1e-6) {
+    //auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // use t + dt for implicit
     big_array update = u;
 
     double kappa = 60;
@@ -1379,7 +1379,7 @@ big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, 
 
 
 int main() { 
-    int nCells = 500; //the distance between points is 0.01
+    int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
@@ -1440,15 +1440,18 @@ int main() {
         dt = computeTimeStep(u , C , dx); 
         t = t + dt;
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
+        auto [A, J] = SolvePotential(t, x0, dx, nCells);  // using t + dt for implicitness
+        std::vector<double> B = MagneticFeild(A, dx);
 
-        // Update source terms
-        u = SourceTermUpdate(u,x0,dx,dt);
-        //update resistive source terms
-        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        // // Update source terms
+        // u = SourceTermUpdate(u,x0,dx,0.5*dt);
+        // //update resistive source terms
+        // u = momentumUpdate_Implicit(u, x0, dx, t, dt);
+        // u = energyUpdate_Implicit(u, x0, dx, t, dt);
 
+        // u = SourceTermUpdate(u,x0,dx,0.5*dt);
         // Apply boundary conditions
-        applyBoundaryConditions(u);
+        // applyBoundaryConditions(u);
 
         //find ubar
 
@@ -1522,14 +1525,19 @@ int main() {
             
         }
 
-        //radiation source term
-        u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells);
         applyBoundaryConditions(u);
 
+        // Update source terms
+        u = SourceTermUpdate(u,x0,dx,0.5*dt);
+        applyBoundaryConditions(u);
         //update resistive source terms
-        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        
+        u = momentumUpdate_Implicit(u, x0, dx, t, dt, A, J, B);
+        u = energyUpdate_Implicit(u, x0, dx, t, dt, A, J, B);
+        //radiation source term
+        u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells, A, J, B);
+        applyBoundaryConditions(u);
+        u = SourceTermUpdate(u,x0,dx,0.5*dt);
+        applyBoundaryConditions(u);
                 
                
     } while (t < tStop);

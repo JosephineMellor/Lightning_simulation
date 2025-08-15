@@ -12,6 +12,7 @@ const int alpha = 22708;
 const int beta = 1294530;
 const double PI = 3.141592653589793;
 const double R0 = 2e-3; //2mm in meters
+const double T0 = 298;
 
 //defining some useful types
 typedef std::array<double , 500> data_vec;
@@ -19,6 +20,8 @@ typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
 typedef std::array<double,4> array;
 typedef std::vector<std::vector<std::array<double , 4>>> big_array;
+typedef std::array<double , 19> species_vec;
+typedef std::array<data_table, 19> species_tables;
 
 
 //flatten the (i,j) into the index of a vector of size N (there will be Nz of each i with each j added on)
@@ -446,8 +449,7 @@ std::vector<double> magneticfield(double t, double x0, double dx, double y0, dou
 }
 
 
-big_array momentumUpdate(big_array u, double x0, double dx, double y0, double dy, double t, double dt, int nxCells, int nyCells){
-    auto [Ar,Jr] = poissonSolverR(t, x0, dx,y0, dy,nxCells, nyCells);
+big_array momentumUpdate(big_array u, double x0, double dx, double y0, double dy, double t, double dt, int nxCells, int nyCells, int max_iter = 10, double tol = 1e-6){
     auto [Az,Jz] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
 
     std::vector<double> B(u.size());
@@ -459,28 +461,68 @@ big_array momentumUpdate(big_array u, double x0, double dx, double y0, double dy
     update = u;
     std::vector<double> cross(u.size());
 
-    for (int i =0; i<cross.size(); i++){
-        // J_z * B_{theta} (in -r direction)
-        cross[i] = -Jz[i] * B[i]; 
-    }
+    // for (int i =0; i<cross.size(); i++){
+    //     // J_z * B_{theta} (in -r direction)
+    //     cross[i] = -Jz[i] * B[i]; 
+    // }
 
-    for(int j =0; j<u[0].size(); j++){
-        for(int i = 0; i < u.size(); i++) { 
+    // for(int j =0; j<u[0].size(); j++){
+    //     for(int i = 0; i < u.size(); i++) { 
         
-            double r = x0 + (i-1.5) * dx;
-            double mom = u[i][j][1];
+    //         double r = x0 + (i-1.5) * dx;
+    //         double mom = u[i][j][1];
 
-            double mom1 = mom + dt * cross[i];
+    //         double mom1 = mom + dt * cross[i];
             
-            update[i][j][1] = mom1;
+    //         update[i][j][1] = mom1;
+    //     }
+    // }
+    // return update;
+
+    // Initial guess: u^{n+1} ≈ u^n
+    big_array guess = u;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Step 1: Compute J and B based on current guess
+        auto [A, J] = poissonSolverZ(t + dt, x0, dx,y0, dy, nxCells, nyCells);  // using t + dt for implicitness
+        std::vector<double> B = B = magneticfield(t,x0,dx,y0,dy, nxCells, nyCells);
+
+        // Step 2: Compute cross product force
+        std::vector<double> cross(u.size());
+        for (int i = 0; i < cross.size(); ++i) {
+            cross[i] = -J[i] * B[i];
+        }
+
+        // Step 3: Update momentum using implicit formula
+        double max_diff = 0.0;
+        for(int j =0; j<u[0].size(); j++){
+            for(int i = 0; i < u.size(); i++) { 
+                double old_momentum = guess[i][j][1];
+                double new_momentum = u[i][j][1] + dt * cross[i];
+
+                guess[i][j][1] = new_momentum;
+
+                double diff = std::abs(new_momentum - old_momentum);
+                max_diff = std::max(max_diff, diff);
+            }
+        }
+
+        // Check for convergence
+        if (max_diff < tol) {
+            std::cout << "[Implicit] Converged in " << iter + 1 << " iterations.\n";
+            break;
+        }
+
+        if (iter == max_iter - 1) {
+            std::cerr << "[Implicit] WARNING: Did not converge after " << max_iter << " iterations.\n";
         }
     }
+
+    update = guess;
     return update;
 }
 
-//use euler method to update energy
-big_array energyUpdate(big_array u, double x0, double dx, double y0, double dy, double t, double dt, int nxCells, int nyCells){
-    auto [Ar,Jr] = poissonSolverR(t, x0, dx,y0, dy,nxCells, nyCells);
+big_array energyUpdate(big_array u, double x0, double dx, double y0, double dy, double t, double dt, int nxCells, int nyCells, int max_iter = 10, double tol = 1e-6) {
     auto [Az,Jz] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
 
     std::vector<double> B(u.size());
@@ -509,11 +551,58 @@ big_array energyUpdate(big_array u, double x0, double dx, double y0, double dy, 
             update[i][j][1] = u[i][j][2] + dt * e1;
         }
     }
+
+    // Initial guess for energy: E^{n+1} ≈ E^n
+    big_array guess = u;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Step 1: Compute J and B from guess (at t + dt)
+        auto [A, J] = poissonSolverZ(t, x0, dx,y0, dy,nxCells, nyCells);
+        std::vector<double> B(u.size());
+        B = magneticfield(t,x0,dx,y0,dy, nxCells, nyCells);
+
+        // Step 2: Compute cross product force and energy source
+        std::vector<double> energy_source(u.size());
+        
+        for(int j =0; j<u[0].size(); j++){
+            for(int i = 0; i < u.size(); i++) { 
+                double rho = guess[i][j][0];
+                double momentum = guess[i][j][1];
+                double velocity = momentum / rho;
+
+                energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
+            }
+        }
+
+        // Step 3: Update energy and check convergence
+        double max_diff = 0.0;
+        for (int i = 0; i < nCells; ++i) {
+            double old_energy = guess[i][2];
+            double new_energy = u[i][2] + dt * energy_source[i];
+
+            guess[i][2] = new_energy;
+
+            double diff = std::abs(new_energy - old_energy);
+            max_diff = std::max(max_diff, diff);
+        }
+
+        // Check for convergence
+        // if (max_diff < tol) {
+        //     std::cout << "[Implicit Energy] Converged in " << iter + 1 << " iterations.\n";
+        //     break;
+        // }
+
+        // if (iter == max_iter - 1) {
+        //     std::cerr << "[Implicit Energy] WARNING: Did not converge after " << max_iter << " iterations.\n";
+        // }
+    }
+
+    update = guess;
     return update;
 }
 
 //function to read in the data from the tabulated equation of state
-std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
+std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table, species_vec , species_tables> Plasma19(){
     
     //load the file
     std::ifstream file("Plasma19_EoS.txt"); 
@@ -523,6 +612,8 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
     int row = 0;
     data_vec densities;
     data_vec pressures;
+    species_vec heats_of_formation;
+    species_tables mass_fractions;
 
     //we want to save sound speeds, energies, temperatures, electrical conductivity and thermal conductivity in tables
     data_table sound_speeds(500, std::vector<double>(500));
@@ -534,6 +625,27 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
     //now loop over the data file row by row, we only want the fifth and sixth row for densities and pressures
     while(std::getline(file , line)){
         row++;
+
+        if( row ==6){
+            std::istringstream iss(line); //extract the line
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            } //put it temporarily in an array
+
+            //then save the heats of formation
+
+            for (int i = 0; i < 19; ++i) {
+                if (i < (int)row_data.size()) {
+                    heats_of_formation[i] = row_data[i];
+                } else {
+                    std::cerr << "Insufficient data in row 6 for heats_of_formation\n";
+                    exit(1);
+                }
+            }
+        }
 
         if( row ==10 || row ==12 ){
             std::istringstream iss(line); //extract the line
@@ -612,23 +724,51 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
             electrical_conductivity[row-1517] = std::move(row_data);
         }
 
-        //thermal conductivity
-        if( row >= 2018 && row< 2518){
-            std::istringstream iss(line); 
+        //mass fractions
+        for (int i = 0; i < 19; i++) {
+            int min_row = 501 * (i + 4) + 14;
+            int max_row = min_row + 500;
+            mass_fractions[i].resize(500, std::vector<double>(500));
 
-            big_vector row_data; 
+            if (row >= min_row && row < max_row) {
+                std::istringstream iss(line);
+
+                big_vector row_data;
+                double val;
+                while (iss >> val) {
+                    row_data.push_back(val);
+                }
+
+                mass_fractions[i][row - min_row] = std::move(row_data);
+            }
+        }
+
+
+        //thermal conductivity
+        if (row >= 12539 && row < 13039) {
+            std::istringstream iss(line);
+
+            big_vector row_data;
             double val;
             while (iss >> val) {
                 row_data.push_back(val);
             }
 
-            thermal_conductivity[row-2018] = std::move(row_data);
+            if(row_data.size() != 500){
+                std::cerr << "Row " << row << " for thermal conductivity has " << row_data.size() << " values, expected 500.\n";
+                exit(1);
+            }
+
+            thermal_conductivity[row - 12539] = std::move(row_data);
         }
+
     }
 
 
-    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity};
+
+    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity, heats_of_formation, mass_fractions};
 }
+
 
 //import our data tables and arrays as global variables
 
@@ -640,6 +780,8 @@ const auto& energies = std::get<3>(EoS_data);
 const auto& temperatures = std::get<4>(EoS_data);
 const auto& electrical_conductivity = std::get<5>(EoS_data);
 const auto& thermal_conductivity = std::get<6>(EoS_data);
+const auto& heats_of_formation = std::get<7>(EoS_data);
+const auto& mass_fractions = std::get<8>(EoS_data);
 
 //function to perform bilinear interpolation on a simplified grid (0,0) , (0,1) , (1,0) , (1,1)
 double BilinearInterpolation(double f_NE, double f_SE, double f_SW, double f_NW, double x, double y){
@@ -660,6 +802,82 @@ double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, doubl
     return y;
 }
 
+//function to interpolate generally
+double interpolate(array u, data_table dataTable){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double NE = dataTable[pressure_top_i][density_top_i];
+    double SE = dataTable[pressure_bottom_i][density_top_i];
+    double SW = dataTable[pressure_bottom_i][density_bottom_i];
+    double NW = dataTable[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double value = BilinearInterpolation(NE , SE , SW , NW , density_ratio , pressure_ratio);  
+    
+    return value;
+}
 
 //functions to convert between primitive to conseravative variables
 array PrimativeToConservative(array prim){
@@ -902,7 +1120,6 @@ double SoundSpeed(array u){
 }
 
 //define the flux function but now we split into two functions fluxX and fluxY
-
 array fluxX_def(std::array <double ,4> x){
     array fluxX;
     array prim = ConservativeToPrimative(x);
@@ -918,7 +1135,6 @@ array fluxX_def(std::array <double ,4> x){
 
     return fluxX;
 } //flux for the x-direction
-
 array fluxY_def(std::array <double ,4> x){
     array fluxY;
     array prim = ConservativeToPrimative(x);
@@ -934,7 +1150,6 @@ array fluxY_def(std::array <double ,4> x){
 
     return fluxY;
 } //flux for the y-direction
-
 
 array getFluxX(array x , array y , double dx , double dt){
     //find the flux at u_{i} and u_{i+1}
@@ -962,7 +1177,6 @@ array getFluxX(array x , array y , double dx , double dt){
 
     
 } //FORCE in x
-
 array getFluxY(array x , array y , double dy , double dt){
     //find the flux at u_{i} and u_{i+1}
 
@@ -1475,7 +1689,7 @@ int main(){
     double dx = (x1 - x0) / nxCells;
     double dy = (y1 - y0) / nyCells;
 
-    //intial conditions!
+    //intial conditions
     for(int i = 0; i < u.size(); i++) { 
         for(int j = 0; j < u[0].size(); j++) {
             array prim;
