@@ -1379,11 +1379,11 @@ big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx,
 
 
 int main() { 
-    int nCells = 100; //the distance between points is 0.01
+    int nCells = 200; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1.5e-5;
+    double tStop = 0e-5;
     double C = 0.8;
     double omega = 0;
 
@@ -1417,7 +1417,7 @@ int main() {
         // }
 
         prim[0] = 1.225; // Density
-        prim[1] = 0*std::pow(10,2.5); // Velocity
+        prim[1] = 0; // Velocity
         prim[2] = 101325 + 2.0*std::pow(10,6)*std::exp(-(x/r0)*(x/r0)); // Pressure
 
         u[i] = PrimativeToConservative(prim);
@@ -1425,10 +1425,11 @@ int main() {
 
         double temp = temperature(u[i]);
         //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
-        out << x << " " << prim[0] <<  " " << prim[1] <<  " " << prim[2] << " " << temp<<std::endl;
+        //out << x << " " << prim[0] <<  " " << prim[1] <<  " " << prim[2] << " " << temp<<std::endl;
     }
 
-    
+    std::cout << "temperature = " << temperature(u[nCells+2]) << std::endl;
+    std::cout <<"sound = " << SoundSpeed(u[nCells+2]) << std::endl;
     
     double dt = computeTimeStep(u , C , dx); //the time steps
     double t = tStart;
@@ -1446,6 +1447,7 @@ int main() {
         //update resistive source terms
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
         // // u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
 
         // Apply boundary conditions
@@ -1497,6 +1499,7 @@ int main() {
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }
 
+        std::cout << flux[nCells + 2][0] << " " << flux[nCells + 3][0] << std::endl;
         //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
         for(int i = 1; i <= nCells+3; i++) { //Update the data
@@ -1531,7 +1534,7 @@ int main() {
         //update resistive source terms
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = thermalSourceTerm(u, dt,t,dx,x0,nCells);
+        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
         
                 
                
