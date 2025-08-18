@@ -1348,8 +1348,10 @@ big_array thermalSourceTerm_Implicit(big_array& u, double dt, double t, double d
     return update;
 }
 //use implicit to update energy with radiation
-big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells, int max_iter = 20, double tol = 1e-6) {
-    auto [A, J] = SolvePotential(t + dt, x0, dx, nCells);  // use t + dt for implicit
+big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells, big_array& uPlus1) {
+    int max_iter = 2;
+    double tol = 1e-6;
+    auto [A, J] = SolvePotential(t, x0, dx, nCells);  // use t + dt for implicit
     big_array update = u;
 
     double kappa = 60;
@@ -1362,7 +1364,7 @@ big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx,
 
         double rho = u[i][0];
         double momentum = u[i][1];
-        double velocity2 = (momentum / rho) * (momentum / rho);
+        double velocity2 = (uPlus1[i][1] / uPlus1[i][0]) * (uPlus1[i][1] / uPlus1[i][0]);
 
         // Precompute J²
         double J2 = (J[i]) * (J[i]);
@@ -1481,7 +1483,6 @@ int main() {
 
         // Update source terms
         u = SourceTermUpdate(u,x0,dx,0.5*dt);
-        u = thermalSourceTerm(u, 0.5*dt,t,dx,x0,nCells);
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
 
@@ -1542,7 +1543,7 @@ int main() {
 
         // Now replace u with the updated data for the next time step
         u = uPlus1;
-        applyBoundaryConditions(u);
+        applyBoundaryConditions(uPlus1);
 
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
@@ -1552,12 +1553,13 @@ int main() {
             std::cout << "Saved frame: " << counter << std::endl;
         }
 
-        u = SourceTermUpdate(u,x0,dx,0.5*dt);
-        u = thermalSourceTerm(u, 0.5*dt,t,dx,x0,nCells);
-        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells,uPlus1);
+        u = SourceTermUpdate(uPlus1,x0,dx,0.5*dt);
+        u = momentumUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
+        u = energyUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
         
-                
+        // Now replace u with the updated data for the next time step
+        u = uPlus1;
                
     } while (t < tStop);
 
