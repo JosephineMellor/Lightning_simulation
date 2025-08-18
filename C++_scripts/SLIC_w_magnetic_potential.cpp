@@ -1383,7 +1383,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0e-5;
+    double tStop = 1.5e-5;
     double C = 0.8;
     double omega = 0;
 
@@ -1472,7 +1472,7 @@ int main() {
                     xi=std::fmin(1, xi_R);
                     
                 }
-
+                
                 uBarL[i][j] = u[i][j] - 0.5 * xi * Delta;
                 uBarR[i][j] = u[i][j] + 0.5 * xi * Delta;
                 
@@ -1494,12 +1494,12 @@ int main() {
         applyBoundaryConditions(uBarHalfR);
 
 
-        for(int i = 0; i <= nCells+3; i++) { //Define the fluxes
+        for(int i = 0; i <= nCells+2; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }
 
-        std::cout << flux[nCells + 2][0] << " " << flux[nCells + 3][0] << std::endl;
+        std::cout << "flux "<<flux[nCells + 2][0] << " " << flux[nCells + 3][0] << std::endl;
         //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
         for(int i = 1; i <= nCells+3; i++) { //Update the data
@@ -1507,10 +1507,13 @@ int main() {
                 uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
             }
         }
+        std::cout << "uPlus1 "<<uPlus1[nCells + 1][0] << " " << uPlus1[nCells + 2][0] << std::endl;
     
         // Now replace u with the updated data for the next time step
         u = uPlus1;
-        
+        applyBoundaryConditions(u);
+
+        std::cout << "u "<<u[nCells + 1][0] << " " << u[nCells + 2][0] << std::endl;
 
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
@@ -1528,7 +1531,6 @@ int main() {
 
         //radiation source term
         
-        applyBoundaryConditions(u);
 
         u = SourceTermUpdate(u,x0,dx,0.5*dt);
         //update resistive source terms
@@ -1555,7 +1557,7 @@ int main() {
 
 
     //output
-    std::string filename = "euler.dat";
+    std::string filename = "euler1.dat";
     std::ofstream output(filename);
     for (int i = 2; i <= nCells+1; ++i) {
         double x = x0 + (i+0.5) * dx;
