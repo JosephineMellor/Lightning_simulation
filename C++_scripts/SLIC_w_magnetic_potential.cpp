@@ -1437,18 +1437,15 @@ int main() {
     SaveUnwrappedData(u, x0, dx, nCells, counter);
     do {
         // Compute the stable time step for this iteration
-
         dt = computeTimeStep(u , C , dx); 
         t = t + dt;
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
         // Update source terms
         u = SourceTermUpdate(u,x0,dx,0.5*dt);
-        //update resistive source terms
+        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
-        // // u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
 
         // Apply boundary conditions
         applyBoundaryConditions(u);
@@ -1499,44 +1496,28 @@ int main() {
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }
 
-        std::cout << "flux "<<flux[nCells + 2][0] << " " << flux[nCells + 3][0] << std::endl;
-        //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
-
         for(int i = 1; i <= nCells+3; i++) { //Update the data
             for(int j=0; j<=2; ++j){
                 uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
             }
         }
-        std::cout << "uPlus1 "<<uPlus1[nCells + 1][0] << " " << uPlus1[nCells + 2][0] << std::endl;
-    
+
         // Now replace u with the updated data for the next time step
         u = uPlus1;
         applyBoundaryConditions(u);
-
-        std::cout << "u "<<u[nCells + 1][0] << " " << u[nCells + 2][0] << std::endl;
 
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
             big_array results(u.size());
             counter += 1;
-            // for (int i = 0; i <= results.size() - 1; ++i) {
-            //     results[i] = ConservativeToPrimative(u[i]);
-            // }
-
             SaveUnwrappedData(u, x0, dx, nCells, counter);
-            // storeTimeData(u[u.size()-1][2], counter, results);
             std::cout << "Saved frame: " << counter << std::endl;
-            
         }
 
-        //radiation source term
-        
-
         u = SourceTermUpdate(u,x0,dx,0.5*dt);
-        //update resistive source terms
+        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
         
                 
                
