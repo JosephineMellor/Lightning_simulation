@@ -651,7 +651,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
-    for (int i = 2; i <= nCells+3; ++i) {
+    for (int i = 0; i <= nCells+3; ++i) {
         double r = x0 + (i+0.5) * dx;
         double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
 
@@ -1130,7 +1130,7 @@ big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx,
 
 
 int main() { 
-    int nCells = 200; //the distance between points is 0.01
+    int nCells = 256; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
@@ -1253,21 +1253,23 @@ int main() {
         }
 
         // Now replace u with the updated data for the next time step
-        u = uPlus1;
+        // u = uPlus1;
         applyBoundaryConditions(uPlus1);
 
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
             big_array results(u.size());
             counter += 1;
-            SaveUnwrappedData(u, x0, dx, nCells, counter);
+            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
             std::cout << "Saved frame: " << counter << std::endl;
         }
 
         u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells,uPlus1);
-        u = momentumUpdate_Implicit(uPlus1, x0, dx, t, dt);
-        u = energyUpdate_Implicit(uPlus1, x0, dx, t, dt);
+        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = SourceTermUpdate(uPlus1,x0,dx,0.5*dt);
+        u = momentumUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
+        u = energyUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
         
         // Now replace u with the updated data for the next time step
         u = uPlus1;
