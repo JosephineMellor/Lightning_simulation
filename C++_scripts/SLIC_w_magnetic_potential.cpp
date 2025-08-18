@@ -847,7 +847,7 @@ std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  d
 
     //set up RHS of the equation, d = -mu_0J*dx^2
     for (int i =0; i<nCells; i++){
-        d[i] = -mu_0 * J[i] * dx * dx;
+        d[i] =  -mu_0 *J[i] * dx * dx;
     }
 
     //add dirichlet boundary conditions (identity matrix at boundaries)
@@ -1198,7 +1198,7 @@ double interpolate(array u, data_table dataTable){
 
 
 //use euler to update energy with radiation
-big_array thermalSourceTerm(big_array& u,  double dt, double t, double dx, double x0, double nCells){
+big_array thermalSourceTerm1(big_array& u,  double dt, double t, double dx, double x0, double nCells){
     //calculate the current density
     auto [A,J] = SolvePotential(t,x0,dx,nCells);
 
@@ -1220,6 +1220,7 @@ big_array thermalSourceTerm(big_array& u,  double dt, double t, double dx, doubl
 
         //array to store the current mass fractions at each space step
         std::array<double, 19> masses;
+        heat_of_formation[i] = 0.0;
         for(int j =0; j<19; j++){
             masses[j]= interpolate(u[i],mass_fractions[j]);
             heat_of_formation[i] += masses[j] * heats_of_formation[j];
@@ -1227,8 +1228,7 @@ big_array thermalSourceTerm(big_array& u,  double dt, double t, double dx, doubl
 
         current_temperature[i] = temperature(u[i]);
 
-        if(i != u.size() - 1){current_velocity2[i] = u[i+1][1]*u[i+1][1];}
-        else{current_velocity2[i] = u[i][1] * u[i][1];}
+        current_velocity2[i] = (u[i][1]/u[i][0]) * (u[i][1]/u[i][0]);
     }
 
     big_array update(u.size());
@@ -1245,6 +1245,44 @@ big_array thermalSourceTerm(big_array& u,  double dt, double t, double dx, doubl
     return update;
     
 }
+big_array thermalSourceTerm(big_array& u, double dt, double t, double dx, double x0, double nCells){
+    auto [A, J] = SolvePotential(t, x0, dx, nCells);
+
+    std::vector<double> conductivity(u.size());
+    std::vector<double> heat_of_formation(u.size(), 0.0);
+    std::vector<double> temperatures(u.size());
+    std::vector<double> velocity2(u.size());
+
+    for(int i = 0; i < u.size(); i++){
+        conductivity[i] = interpolate(u[i], electrical_conductivity);
+
+        std::array<double, 19> masses;
+        for(int j = 0; j < 19; j++){
+            masses[j] = interpolate(u[i], mass_fractions[j]);
+            heat_of_formation[i] += masses[j] * heats_of_formation[j];
+        }
+
+        temperatures[i] = temperature(u[i]);
+        velocity2[i] = u[i][1] * u[i][1];  // current cell's velocity
+    }
+
+    big_array update = u;
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+
+    for(int i = 0; i < u.size(); i++){
+        double rho = u[i][0];
+        double rad_term = stefan_boltzmann * kappa * (std::pow(temperatures[i], 4) - std::pow(T0, 4))
+                        - rho * (heat_of_formation[i] + 0.5 * velocity2[i]);
+
+        double joule = (1.0 / conductivity[i]) * J[i] * J[i];  // update if J is a vector
+
+        update[i][2] += dt * (joule - rad_term);  // energy update
+    }
+
+    return update;
+}
+
 //use implicit to update energy with radiation
 big_array thermalSourceTerm_Implicit(big_array& u, double dt, double t, double dx, double x0, double nCells, int max_iter = 10, double tol = 1e-6) {
     // Get current density
@@ -1327,7 +1365,7 @@ big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx,
         double velocity2 = (momentum / rho) * (momentum / rho);
 
         // Precompute J²
-        double J2 = J[i] * J[i];
+        double J2 = (J[i]) * (J[i]);
 
         // Compute constant mass-fraction-based heat of formation
         double heat_of_formation = 0.0;
@@ -1423,13 +1461,13 @@ int main() {
         u[i] = PrimativeToConservative(prim);
         // array v = ConservativeToPrimative(u[i]);
 
-        double temp = temperature(u[i]);
+        //double temp = temperature(u[i]);
         //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
         //out << x << " " << prim[0] <<  " " << prim[1] <<  " " << prim[2] << " " << temp<<std::endl;
     }
 
-    std::cout << "temperature = " << temperature(u[nCells+2]) << std::endl;
-    std::cout <<"sound = " << SoundSpeed(u[nCells+2]) << std::endl;
+    // std::cout << "temperature = " << temperature(u[nCells+2]) << std::endl;
+    // std::cout <<"sound = " << SoundSpeed(u[nCells+2]) << std::endl;
     
     double dt = computeTimeStep(u , C , dx); //the time steps
     double t = tStart;
@@ -1443,7 +1481,7 @@ int main() {
 
         // Update source terms
         u = SourceTermUpdate(u,x0,dx,0.5*dt);
-        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
+        u = thermalSourceTerm(u, 0.5*dt,t,dx,x0,nCells);
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
 
@@ -1515,7 +1553,7 @@ int main() {
         }
 
         u = SourceTermUpdate(u,x0,dx,0.5*dt);
-        u = thermalSourceTerm_Newton(u, 0.5*dt,t,dx,x0,nCells);
+        u = thermalSourceTerm(u, 0.5*dt,t,dx,x0,nCells);
         u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         
