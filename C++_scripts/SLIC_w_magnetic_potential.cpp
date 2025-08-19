@@ -223,7 +223,6 @@ double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, doubl
     return y;
 }
 
-
 //functions to convert between primitive to conseravative variables
 array PrimativeToConservative(array prim){
     array consv;
@@ -616,7 +615,7 @@ double thermalConductivity(array u){
     return thermalConductivity;
 }
 
-//function to save data as spherically symmetric
+//function to save data as cylindrically symmetric
 void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x0, double dx, int nCells, int index, int nTheta = 200) {
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
@@ -638,9 +637,6 @@ void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x
     out.close();
 }
 
-
-
-
 //function to save data as 1 dimensional
 void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, double dx, int nCells, int index, int nTheta = 200) {
     big_array results(u.size());
@@ -651,7 +647,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
-    for (int i = 0; i <= nCells+3; ++i) {
+    for (int i = 2; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
         out << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
@@ -659,20 +655,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     out.close();
 }
 
-void storeTimeData(const double pressure, int counter, std::array<double, 24> results){
-    results[counter] = pressure ;
-}
-
-void PlotWithTime(std::array<double, 24> results){
-    std::string filename = "SLIC.dat";
-    std::ofstream out(filename);
-    for(int i=0; i<24; i++){
-        out<< i << " "<<results[i]<<"\n";
-    }
-}
-
 //define a general flux function 
-
 array flux_def(array x){
     array flux;
     array y = ConservativeToPrimative(x);
@@ -687,8 +670,6 @@ array flux_def(array x){
 }
 
 //define a function to get the flux x is ui and y is ui+1 they are both arrays of length 3
-//it will spit out an array of size 3 as well give each variable their flux
-
 array getFlux(array  x , array y, double dx , double dt){
     //impliment general flux function 
     array  f_1 = flux_def(x); //f(ui)
@@ -875,7 +856,7 @@ std::vector<double> MagneticFeild(std::vector<double> A, double dx){
 }
 
 //use implicit method to update momentum in place
-void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B, int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
 
     // Initial guess: u^{n+1} ≈ u^n (store original values for reference)
@@ -886,7 +867,7 @@ void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, doubl
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // Step 1: Compute J and B based on current guess
-        auto [A, J] = SolvePotential(t, x0, dx, nCells);  // using t + dt for implicitness
+        auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // using t + dt for implicitness
         std::vector<double> B = MagneticFeild(A, dx);
 
         // Step 2: Compute cross product force
@@ -907,15 +888,33 @@ void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, doubl
             max_diff = std::max(max_diff, diff);
         }
 
-        // Check for convergence
-        // if (max_diff < tol) {
-        //     std::cout << "[Implicit] Converged in " << iter + 1 << " iterations.\n";
-        //     break;
-        // }
+    }
+}
 
-        // if (iter == max_iter - 1) {
-        //     std::cerr << "[Implicit] WARNING: Did not converge after " << max_iter << " iterations.\n";
-        // }
+//use explicit method to update momentum in place with sub-stepping
+void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B, int sub_steps = 10) {
+    const int nCells = u.size();
+    double dt_sub = dt / sub_steps;  // smaller time step
+    double t_current = t;
+
+    // Sub-step integration for stability
+    for (int step = 0; step < sub_steps; ++step) {
+        // Compute J and B based on current state
+        // auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
+        // std::vector<double> B = MagneticFeild(A, dx);
+
+        // Compute cross product force
+        std::vector<double> cross(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            cross[i] = -J[i] * B[i];
+        }
+
+        // Explicit update with smaller time step
+        for (int i = 0; i < nCells; ++i) {
+            u[i][1] = u[i][1] + dt_sub * cross[i];
+        }
+        
+        t_current += dt_sub;
     }
 }
 
@@ -932,7 +931,7 @@ void energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double 
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // Step 1: Compute J and B from current state (at t + dt)
-        auto [A, J] = SolvePotential(t, x0, dx, nCells);
+        auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);
         std::vector<double> B = MagneticFeild(A, dx);
 
         // Step 2: Compute cross product force and energy source
@@ -956,19 +955,39 @@ void energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double 
             double diff = std::abs(new_energy - old_energy);
             max_diff = std::max(max_diff, diff);
         }
-
-        // Check for convergence
-        // if (max_diff < tol) {
-        //     std::cout << "[Implicit Energy] Converged in " << iter + 1 << " iterations.\n";
-        //     break;
-        // }
-
-        // if (iter == max_iter - 1) {
-        //     std::cerr << "[Implicit Energy] WARNING: Did not converge after " << max_iter << " iterations.\n";
-        // }
     }
 }
 
+//use explicit method to update energy in place with sub-stepping
+void energyUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B, int sub_steps = 10) {
+    const int nCells = u.size();
+    double dt_sub = dt / sub_steps;  // smaller time step
+    double t_current = t;
+
+    // Sub-step integration for stability
+    for (int step = 0; step < sub_steps; ++step) {
+        // Compute J and B from current state
+        // auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
+        // std::vector<double> B = MagneticFeild(A, dx);
+
+        // Compute energy source terms
+        std::vector<double> energy_source(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            double rho = u[i][0];
+            double momentum = u[i][1];
+            double velocity = momentum / rho;
+
+            energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
+        }
+
+        // Explicit update with smaller time step
+        for (int i = 0; i < nCells; ++i) {
+            u[i][2] = u[i][2] + dt_sub * energy_source[i];
+        }
+        
+        t_current += dt_sub;
+    }
+}
 
 //function to interpolate generally
 double interpolate(array u, data_table dataTable){
@@ -1047,12 +1066,11 @@ double interpolate(array u, data_table dataTable){
     return value;
 }
 
-//use implicit to update energy with radiation
-big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells, big_array& uPlus1) {
+//use implicit to update energy with radiation in place
+void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells, big_array& uPlus1 ,big_vector A, big_vector J, big_vector B) {
     int max_iter = 2;
     double tol = 1e-6;
-    auto [A, J] = SolvePotential(t, x0, dx, nCells);  // use t + dt for implicit
-    big_array update = u;
+    // auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // use t + dt for implicit
 
     double kappa = 60;
     double stefan_boltzmann = 5.67e-8;
@@ -1110,20 +1128,67 @@ big_array thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx,
             ++iter;
         }
 
-
-        update[i][2] = E;  // set updated energy
+        // Update energy directly in the input array
+        u[i][2] = E;
     }
+}
 
-    return update;
+//use explicit method to update energy with radiation and adaptive sub-stepping
+void thermalSourceTerm_Explicit(big_array& u, double dt, double t, double dx, double x0, double nCells, big_array& uPlus1, big_vector A, big_vector J, big_vector B) {
+    
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+    
+    int required_sub_steps = 20;
+    double dt_sub = dt / required_sub_steps;
+    double t_current = t;
+    
+    for (int step = 0; step < required_sub_steps; ++step) {
+        // Recompute current density at each sub-step
+        big_vector A_sub = A;
+        big_vector J_sub = J;
+        
+        for (int i = 0; i < u.size(); ++i) {
+            double rho = u[i][0];
+            double momentum = u[i][1];
+            double E = u[i][2];
+            double velocity2 = (uPlus1[i][1] / uPlus1[i][0]) * (uPlus1[i][1] / uPlus1[i][0]);
+            
+            // Current state at sub-step
+            double T = temperature({rho, momentum, E});
+            double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+            double J2 = J_sub[i] * J_sub[i];
+            
+            // Compute heat of formation (this is constant during the step)
+            double heat_of_formation = 0.0;
+            for (int j = 0; j < 19; ++j) {
+                double mass_frac = interpolate(u[i], mass_fractions[j]);
+                heat_of_formation += mass_frac * heats_of_formation[j];
+            }
+            
+            // Source terms
+            double joule_heating = J2 / (sigma + 1e-10);
+            double S_T = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+            double total_source = joule_heating - S_T;
+            
+            // Explicit update
+            u[i][2] = u[i][2] + dt_sub * total_source;
+        }
+        
+        t_current += dt_sub;
+    }
+    
+    // Optional: Print diagnostics
+    // std::cout << "Thermal update used " << required_sub_steps << " sub-steps (CFL target: " << cfl_target << ")\n";
 }
 
 
 int main() { 
-    int nCells = 256; //the distance between points is 0.01
+    int nCells = 100; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1.5e-5;
+    double tStop = 0.6e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -1170,22 +1235,29 @@ int main() {
     int counter =0;
     SaveUnwrappedData(u, x0, dx, nCells, counter);
     do {
+
         // Compute the stable time step for this iteration
         dt = computeTimeStep(u , C , dx); 
         t = t + dt;
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
-        // Update source terms
+        // Update cylindrical source terms
         SourceTermUpdate(u,x0,dx,0.5*dt);
-        // u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        // u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+
+
+        // ---------step 1: Poisson -----------
+
+        //compute the magnetic feild, current and vector potential
+        auto [A,J] = SolvePotential(t,x0,dx,nCells);
+        auto B = MagneticFeild(A,dx);
 
         // Apply boundary conditions
         applyBoundaryConditions(u);
 
-        //find ubar
 
+        // ---------step 2: SLIC -----------
 
+        //find ubar with limiting
         for(int i=1; i<=nCells+2; ++i){
             for(int j=0; j<=2; ++j){
                 double DeltaPlus = u[i+1][j] - u[i][j];
@@ -1242,23 +1314,36 @@ int main() {
         applyBoundaryConditions(uPlus1);
 
         // Output data at specific time steps
-        while (t >= 1e-5 * counter) {
-            big_array results(u.size());
-            counter += 1;
-            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
-            std::cout << "Saved frame: " << counter << std::endl;
-        }
+        // while (t >= 1e-5 * counter) {
+        //     big_array results(u.size());
+        //     counter += 1;
+        //     SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
+        //     std::cout << "Saved frame: " << counter << std::endl;
+        // }
 
-        u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells,uPlus1);
-        momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+
+        // ------------ step 3: Joule Heating ------------
+
+        thermalSourceTerm_Explicit(u, dt,t,dx,x0,nCells,uPlus1, A, J, B);
+
+
+        // ------------ step 4: Lorentz force -----------
+
+        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+
+        
+        // cylindrical terms
         SourceTermUpdate(uPlus1,x0,dx,0.5*dt);
-        momentumUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
-        energyUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
+        
         
         // Now replace u with the updated data for the next time step
         u = uPlus1;
-               
+        
+        //if emergency
+        if (std::abs(dt) < 1e-12){ break;}
     } while (t < tStop);
 
     applyBoundaryConditions(u);
@@ -1278,7 +1363,7 @@ int main() {
     //output
     std::string filename = "euler1.dat";
     std::ofstream output(filename);
-    for (int i = 2; i <= nCells+1; ++i) {
+    for (int i =0; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
         //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
