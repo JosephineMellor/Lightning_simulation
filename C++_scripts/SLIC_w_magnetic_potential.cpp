@@ -647,7 +647,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
-    for (int i = 2; i <= nCells+3; ++i) {
+    for (int i = 1; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
         out << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
@@ -1067,8 +1067,8 @@ double interpolate(array u, data_table dataTable){
 }
 
 //use implicit to update energy with radiation in place
-void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells, big_array& uPlus1 ,big_vector A, big_vector J, big_vector B) {
-    int max_iter = 2;
+void thermalSourceTerm_Newton1(big_array& u, double dt, double t, double dx, double x0, double nCells,big_vector A, big_vector J, big_vector B) {
+    int max_iter = 20;
     double tol = 1e-6;
     // auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // use t + dt for implicit
 
@@ -1082,7 +1082,7 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
 
         double rho = u[i][0];
         double momentum = u[i][1];
-        double velocity2 = (uPlus1[i][1] / uPlus1[i][0]) * (uPlus1[i][1] / uPlus1[i][0]);
+        double velocity2 = (u[i][1] / u[i][0]) * (u[i][1] / u[i][0]);
 
         // Precompute J²
         double J2 = (J[i]) * (J[i]);
@@ -1131,6 +1131,73 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
         // Update energy directly in the input array
         u[i][2] = E;
     }
+}
+
+//use implicit to update energy with radiation
+big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, double x0, double nCells, big_vector A, big_vector J, big_vector B, int max_iter = 20, double tol = 1e-6) {
+    big_array update = u;
+
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+    double epsilon = 1e-5;  // for finite difference
+
+    for (int i = 0; i < u.size(); ++i) {
+        double E_old = u[i][2];  // E^n
+        double E = E_old;        // initial guess E^0
+
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double velocity2 = (momentum / rho) * (momentum / rho);
+
+        // Precompute J²
+        double J2 = J[i] * J[i];
+
+        // Compute constant mass-fraction-based heat of formation
+        double heat_of_formation = 0.0;
+        for (int j = 0; j < 19; ++j) {
+            double mass_frac = interpolate(u[i], mass_fractions[j]);
+            heat_of_formation += mass_frac * heats_of_formation[j];
+        }
+
+        int iter = 0;
+        double diff = 1e9;
+
+        while (iter < max_iter && diff > tol) {
+            // T from energy guess
+            double T = temperature({rho, momentum, E});
+
+            // σ from E guess
+            double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+
+            // Radiation loss term S_T
+            double S_T = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+
+            // f(E)
+            double f = E - E_old - dt * ((1.0 / sigma) * J2 - S_T);
+
+            // f'(E) via finite difference
+            double E_eps = E + epsilon;
+
+            // T_eps from E+ε
+            double T_eps = temperature({rho, momentum, E_eps});
+            double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
+            double S_T_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+            double f_eps = E_eps - E_old - dt * ((1.0 / sigma_eps) * J2 - S_T_eps);
+
+            double df_dE = (f_eps - f) / epsilon;
+
+            // Newton step
+            double E_new = E - f / df_dE;
+            diff = std::abs(E_new - E);
+            E = E_new;
+            ++iter;
+        }
+
+
+        update[i][2] = E;  // set updated energy
+    }
+
+    return update;
 }
 
 //use explicit method to update energy with radiation and adaptive sub-stepping
@@ -1184,11 +1251,11 @@ void thermalSourceTerm_Explicit(big_array& u, double dt, double t, double dx, do
 
 
 int main() { 
-    int nCells = 100; //the distance between points is 0.01
+    int nCells = 200; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 0.6e-4;
+    double tStop = 1.5e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -1213,20 +1280,9 @@ int main() {
         // x 0 is at point i=1/2
         double x = x0 + (i+0.5) * dx;
         std::array<double, 3> prim;
-        // if(x <= 0.4) {
-        //     prim[0] = 1; // Density
-        //     prim[1] = 0*std::pow(10,2.5); // Velocity
-        //     prim[2] = 1*std::pow(10,5); // Pressure
-        //     } else {
-        //     prim[0] = 0.125; // Density
-        //     prim[1] = 0*std::pow(10,2.5); // Velocity
-        //     prim[2] = 0.1*std::pow(10,5); // Pressure
-        // }
-
         prim[0] = 1.225; // Density
         prim[1] = 0; // Velocity
         prim[2] = 101325 + 2.0*std::pow(10,6)*std::exp(-(x/r0)*(x/r0)); // Pressure
-
         u[i] = PrimativeToConservative(prim);
     }
 
@@ -1243,6 +1299,7 @@ int main() {
 
         // Update cylindrical source terms
         SourceTermUpdate(u,x0,dx,0.5*dt);
+        applyBoundaryConditions(u);
 
 
         // ---------step 1: Poisson -----------
@@ -1314,25 +1371,26 @@ int main() {
         applyBoundaryConditions(uPlus1);
 
         // Output data at specific time steps
-        // while (t >= 1e-5 * counter) {
-        //     big_array results(u.size());
-        //     counter += 1;
-        //     SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
-        //     std::cout << "Saved frame: " << counter << std::endl;
-        // }
+        while (t >= 1e-5 * counter) {
+            counter += 1;
+            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
+            std::cout << "Saved frame: " << counter << std::endl;
+        }
 
 
         // ------------ step 3: Joule Heating ------------
 
-        thermalSourceTerm_Explicit(u, dt,t,dx,x0,nCells,uPlus1, A, J, B);
-
+        thermalSourceTerm_Newton(uPlus1, dt,t,dx,x0,nCells,A,J,B);
+        applyBoundaryConditions(uPlus1);
 
         // ------------ step 4: Lorentz force -----------
 
         momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
         energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        applyBoundaryConditions(uPlus1);
         momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
         energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        applyBoundaryConditions(uPlus1);
 
         
         // cylindrical terms
@@ -1361,7 +1419,7 @@ int main() {
 
 
     //output
-    std::string filename = "euler1.dat";
+    std::string filename = "euler.dat";
     std::ofstream output(filename);
     for (int i =0; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
