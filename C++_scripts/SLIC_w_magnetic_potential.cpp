@@ -652,15 +652,9 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
     for (int i = 0; i <= nCells+3; ++i) {
-        double r = x0 + (i+0.5) * dx;
-        double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
-
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
-        //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
         out << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
-
-        // out<< r << results[i][0]<<results[i][1]<<results[i][2]<<"\n";
     }
     out.close();
 }
@@ -742,9 +736,8 @@ double computeTimeStep(const big_array& u , double C, double dx) {
      return dt;
 }
 
-// Update source terms
-big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
-    big_array update(u.size());
+// Update source terms in place
+void SourceTermUpdate(big_array& u, double x0, double dx, double dt){
     double alpha = 1.0;
 
     for(int i = 0; i < u.size(); i++) { 
@@ -781,14 +774,12 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
         double S_mom_2 = -alpha * u_stage1[0] * v1 * v1 / r;
         double S_E_2 = -alpha * (u_stage1[2] + p1) * v1 / r;
 
-        // Final update
-        update[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
-        update[i][1] = mom + 0.5 * dt * (S_mom + S_mom_2);
-        update[i][2] = E + 0.5 * dt * (S_E + S_E_2);
+        // Final update - modify u directly
+        u[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+        u[i][1] = mom + 0.5 * dt * (S_mom + S_mom_2);
+        u[i][2] = E + 0.5 * dt * (S_E + S_E_2);
         
     }
-    
-    return update;
 }
 
 void applyBoundaryConditions(big_array& u){
@@ -883,13 +874,15 @@ std::vector<double> MagneticFeild(std::vector<double> A, double dx){
     return B;
 }
 
-//use implicit method to update momentum
-big_array momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+//use implicit method to update momentum in place
+void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
-    big_array update = u;
 
-    // Initial guess: u^{n+1} ≈ u^n
-    big_array guess = u;
+    // Initial guess: u^{n+1} ≈ u^n (store original values for reference)
+    std::vector<double> original_momentum(nCells);
+    for (int i = 0; i < nCells; ++i) {
+        original_momentum[i] = u[i][1];
+    }
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // Step 1: Compute J and B based on current guess
@@ -905,10 +898,10 @@ big_array momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, 
         // Step 3: Update momentum using implicit formula
         double max_diff = 0.0;
         for (int i = 0; i < nCells; ++i) {
-            double old_momentum = guess[i][1];
-            double new_momentum = u[i][1] + dt * cross[i];
+            double old_momentum = u[i][1];
+            double new_momentum = original_momentum[i] + dt * cross[i];
 
-            guess[i][1] = new_momentum;
+            u[i][1] = new_momentum;
 
             double diff = std::abs(new_momentum - old_momentum);
             max_diff = std::max(max_diff, diff);
@@ -924,30 +917,29 @@ big_array momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, 
         //     std::cerr << "[Implicit] WARNING: Did not converge after " << max_iter << " iterations.\n";
         // }
     }
-
-    update = guess;
-    return update;
 }
 
 
-//use implicit metho to update energy
-big_array energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+//use implicit method to update energy in place
+void energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
     const int nCells = u.size();
-    big_array update = u;
 
-    // Initial guess for energy: E^{n+1} ≈ E^n
-    big_array guess = u;
+    // Store original energy values for reference
+    std::vector<double> original_energy(nCells);
+    for (int i = 0; i < nCells; ++i) {
+        original_energy[i] = u[i][2];
+    }
 
     for (int iter = 0; iter < max_iter; ++iter) {
-        // Step 1: Compute J and B from guess (at t + dt)
+        // Step 1: Compute J and B from current state (at t + dt)
         auto [A, J] = SolvePotential(t, x0, dx, nCells);
         std::vector<double> B = MagneticFeild(A, dx);
 
         // Step 2: Compute cross product force and energy source
         std::vector<double> energy_source(nCells);
         for (int i = 0; i < nCells; ++i) {
-            double rho = guess[i][0];
-            double momentum = guess[i][1];
+            double rho = u[i][0];
+            double momentum = u[i][1];
             double velocity = momentum / rho;
 
             energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
@@ -956,10 +948,10 @@ big_array energyUpdate_Implicit(big_array& u, double x0, double dx, double t, do
         // Step 3: Update energy and check convergence
         double max_diff = 0.0;
         for (int i = 0; i < nCells; ++i) {
-            double old_energy = guess[i][2];
-            double new_energy = u[i][2] + dt * energy_source[i];
+            double old_energy = u[i][2];
+            double new_energy = original_energy[i] + dt * energy_source[i];
 
-            guess[i][2] = new_energy;
+            u[i][2] = new_energy;
 
             double diff = std::abs(new_energy - old_energy);
             max_diff = std::max(max_diff, diff);
@@ -975,9 +967,6 @@ big_array energyUpdate_Implicit(big_array& u, double x0, double dx, double t, do
         //     std::cerr << "[Implicit Energy] WARNING: Did not converge after " << max_iter << " iterations.\n";
         // }
     }
-
-    update = guess;
-    return update;
 }
 
 
@@ -1134,7 +1123,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1.5e-4;
+    double tStop = 1.5e-5;
     double C = 0.8;
     double omega = 0;
 
@@ -1143,6 +1132,8 @@ int main() {
     big_array  flux(u.size());
     big_array  uBarL(u.size());
     big_array  uBarR(u.size());
+    big_array  fluxL(u.size());
+    big_array  fluxR(u.size());
     big_array  uBarHalfL(u.size());
     big_array  uBarHalfR(u.size());
     big_array  uPlus1(u.size());
@@ -1172,17 +1163,9 @@ int main() {
         prim[2] = 101325 + 2.0*std::pow(10,6)*std::exp(-(x/r0)*(x/r0)); // Pressure
 
         u[i] = PrimativeToConservative(prim);
-        // array v = ConservativeToPrimative(u[i]);
-
-        //double temp = temperature(u[i]);
-        //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
-        //out << x << " " << prim[0] <<  " " << prim[1] <<  " " << prim[2] << " " << temp<<std::endl;
     }
 
-    // std::cout << "temperature = " << temperature(u[nCells+2]) << std::endl;
-    // std::cout <<"sound = " << SoundSpeed(u[nCells+2]) << std::endl;
-    
-    double dt = computeTimeStep(u , C , dx); //the time steps
+    double dt;
     double t = tStart;
     int counter =0;
     SaveUnwrappedData(u, x0, dx, nCells, counter);
@@ -1193,7 +1176,7 @@ int main() {
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
         // Update source terms
-        u = SourceTermUpdate(u,x0,dx,0.5*dt);
+        SourceTermUpdate(u,x0,dx,0.5*dt);
         // u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
         // u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
 
@@ -1228,9 +1211,11 @@ int main() {
         }
 
         for(int i=1; i<=nCells+2; ++i){
+            fluxL[i] = flux_def(uBarL[i]);
+            fluxR[i] = flux_def(uBarR[i]);
             for(int j=0; j<=2; ++j){
-                uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
-                uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
+                uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(fluxR[i][j]-fluxL[i][j]);
+                uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(fluxR[i][j]-fluxL[i][j]);
                 
             }
         }
@@ -1265,11 +1250,11 @@ int main() {
         }
 
         u = thermalSourceTerm_Newton(u, dt,t,dx,x0,nCells,uPlus1);
-        u = momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
-        u = SourceTermUpdate(uPlus1,x0,dx,0.5*dt);
-        u = momentumUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
-        u = energyUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
+        momentumUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        energyUpdate_Implicit(u, x0, dx, t, 0.5*dt);
+        SourceTermUpdate(uPlus1,x0,dx,0.5*dt);
+        momentumUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
+        energyUpdate_Implicit(uPlus1, x0, dx, t, 0.5*dt);
         
         // Now replace u with the updated data for the next time step
         u = uPlus1;
