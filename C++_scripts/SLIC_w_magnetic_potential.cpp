@@ -1069,7 +1069,7 @@ double interpolate(array u, data_table dataTable){
 //use implicit to update energy with radiation in place
 void thermalSourceTerm_Newton1(big_array& u, double dt, double t, double dx, double x0, double nCells,big_vector A, big_vector J, big_vector B) {
     int max_iter = 20;
-    double tol = 1e-6;
+    double tol = 1e-5;
     // auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // use t + dt for implicit
 
     double kappa = 60;
@@ -1123,23 +1123,27 @@ void thermalSourceTerm_Newton1(big_array& u, double dt, double t, double dx, dou
 
             // Newton step
             double E_new = E - f / df_dE;
-            diff = std::abs(E_new - E);
+            diff = std::fabs(E_new - E);
             E = E_new;
             ++iter;
         }
-
         // Update energy directly in the input array
         u[i][2] = E;
     }
 }
 
-//use implicit to update energy with radiation
-big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, double x0, double nCells, big_vector A, big_vector J, big_vector B, int max_iter = 20, double tol = 1e-6) {
-    big_array update = u;
+//use implicit to update energy with radiation in place
+void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells,
+                             big_vector A, big_vector J, big_vector B, double T0 = 300.0) {
+    int max_iter = 60;
+    double tol = 1e-8;  // Tighter tolerance for better accuracy
+    double min_sigma = 1e-12;  // Minimum conductivity to avoid division by zero
+    double min_df_dE = 1e-12;  // Minimum derivative to avoid division by zero
+    int sub_steps = 10;
+    double dt_sub = dt / sub_steps;
 
     double kappa = 60;
     double stefan_boltzmann = 5.67e-8;
-    double epsilon = 1e-5;  // for finite difference
 
     for (int i = 0; i < u.size(); ++i) {
         double E_old = u[i][2];  // E^n
@@ -1159,96 +1163,103 @@ big_array thermalSourceTerm_Newton(big_array u, double dt, double t, double dx, 
             heat_of_formation += mass_frac * heats_of_formation[j];
         }
 
+        // Chemical source term (typically negative for energy release)
+        double S_chem = -rho * heat_of_formation - rho*0.5*velocity2;  // Separated from radiation
+        
         int iter = 0;
         double diff = 1e9;
+        bool converged = false;
+        for(int step = 0; step < sub_steps; ++step){
 
-        while (iter < max_iter && diff > tol) {
-            // T from energy guess
-            double T = temperature({rho, momentum, E});
+            while (iter < max_iter && diff > tol) {
+                // T from energy guess
+                double T = temperature({rho, momentum, E});
+                
+                // Ensure positive temperature
+                if (T <= 0) {
+                    T = T0;  // Fall back to reference temperature
+                }
 
-            // σ from E guess
-            double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+                // σ from E guess
+                double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+                sigma = std::max(sigma, min_sigma);  // Avoid division by zero
 
-            // Radiation loss term S_T
-            double S_T = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+                // Radiation loss term (positive = energy loss)
+                double S_rad = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4));
+                
+                // Joule heating term (positive = energy gain)
+                double S_joule = J2 / sigma;
 
-            // f(E)
-            double f = E - E_old - dt * ((1.0 / sigma) * J2 - S_T);
+                // Total source term: Joule heating - Radiation loss + Chemical energy
+                double S_total = S_joule - S_rad + S_chem;
 
-            // f'(E) via finite difference
-            double E_eps = E + epsilon;
+                // Residual function f(E) = E - E_old - dt * S_total
+                double f = E - E_old - dt_sub * S_total;
 
-            // T_eps from E+ε
-            double T_eps = temperature({rho, momentum, E_eps});
-            double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
-            double S_T_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
-            double f_eps = E_eps - E_old - dt * ((1.0 / sigma_eps) * J2 - S_T_eps);
+                // Compute derivative using adaptive finite difference
+                double epsilon = std::max(1e-8 * std::abs(E), 1e-10);
+                double E_eps = E + epsilon;
 
-            double df_dE = (f_eps - f) / epsilon;
+                // Evaluate function at E + epsilon
+                double T_eps = temperature({rho, momentum, E_eps});
+                T_eps = std::max(T_eps, T0);  // Ensure positive temperature
+                
+                double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
+                sigma_eps = std::max(sigma_eps, min_sigma);
+                
+                double S_rad_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4));
+                double S_joule_eps = J2 / sigma_eps;
+                double S_total_eps = S_joule_eps - S_rad_eps + S_chem;
+                
+                double f_eps = E_eps - E_old - dt_sub * S_total_eps;
 
-            // Newton step
-            double E_new = E - f / df_dE;
-            diff = std::abs(E_new - E);
-            E = E_new;
-            ++iter;
-        }
+                // Finite difference derivative
+                double df_dE = (f_eps - f) / epsilon;
+                
+                // Avoid division by very small derivative
+                if (std::abs(df_dE) < min_df_dE) {
+                    // Use steepest descent instead of Newton
+                    double grad_sign = (f > 0) ? -1.0 : 1.0;
+                    E = E + grad_sign * std::min(std::abs(f), 0.1 * std::abs(E));
+                } else {
+                    // Newton step with damping for stability
+                    double delta_E = -f / df_dE;
+                    double damping = 1.0;
+                    
+                    // Limit the step size for stability
+                    double max_step = 0.1 * std::abs(E);
+                    if (std::abs(delta_E) > max_step) {
+                        damping = max_step / std::abs(delta_E);
+                    }
+                    
+                    E = E + damping * delta_E;
+                }
 
+                // Ensure energy stays physical (positive)
+                E = std::max(E, 0.1 * E_old);
 
-        update[i][2] = E;  // set updated energy
-    }
-
-    return update;
-}
-
-//use explicit method to update energy with radiation and adaptive sub-stepping
-void thermalSourceTerm_Explicit(big_array& u, double dt, double t, double dx, double x0, double nCells, big_array& uPlus1, big_vector A, big_vector J, big_vector B) {
-    
-    double kappa = 60;
-    double stefan_boltzmann = 5.67e-8;
-    
-    int required_sub_steps = 20;
-    double dt_sub = dt / required_sub_steps;
-    double t_current = t;
-    
-    for (int step = 0; step < required_sub_steps; ++step) {
-        // Recompute current density at each sub-step
-        big_vector A_sub = A;
-        big_vector J_sub = J;
-        
-        for (int i = 0; i < u.size(); ++i) {
-            double rho = u[i][0];
-            double momentum = u[i][1];
-            double E = u[i][2];
-            double velocity2 = (uPlus1[i][1] / uPlus1[i][0]) * (uPlus1[i][1] / uPlus1[i][0]);
-            
-            // Current state at sub-step
-            double T = temperature({rho, momentum, E});
-            double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
-            double J2 = J_sub[i] * J_sub[i];
-            
-            // Compute heat of formation (this is constant during the step)
-            double heat_of_formation = 0.0;
-            for (int j = 0; j < 19; ++j) {
-                double mass_frac = interpolate(u[i], mass_fractions[j]);
-                heat_of_formation += mass_frac * heats_of_formation[j];
+                diff = std::abs(E - (E - f / std::max(std::abs(df_dE), min_df_dE)));
+                ++iter;
+                
+                // Check for convergence
+                if (std::abs(f) < tol) {
+                    converged = true;
+                    break;
+                }
             }
-            
-            // Source terms
-            double joule_heating = J2 / (sigma + 1e-10);
-            double S_T = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
-            double total_source = joule_heating - S_T;
-            
-            // Explicit update
-            u[i][2] = u[i][2] + dt_sub * total_source;
         }
-        
-        t_current += dt_sub;
-    }
-    
-    // Optional: Print diagnostics
-    // std::cout << "Thermal update used " << required_sub_steps << " sub-steps (CFL target: " << cfl_target << ")\n";
-}
 
+        // Warning if not converged
+        if (!converged) {
+            // In practice, you might want to log this or handle it differently
+            // std::cerr << "Warning: Newton iteration did not converge at cell " << i << std::endl;
+        }
+
+        // Update energy directly in the input array
+        u[i][2] = E;
+    }
+
+}
 
 int main() { 
     int nCells = 200; //the distance between points is 0.01
@@ -1419,7 +1430,7 @@ int main() {
 
 
     //output
-    std::string filename = "euler.dat";
+    std::string filename = "with_thermal.dat";
     std::ofstream output(filename);
     for (int i =0; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
