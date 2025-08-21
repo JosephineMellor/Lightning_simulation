@@ -1239,6 +1239,7 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
                 E = std::max(E, 0.1 * E_old);
 
                 diff = std::abs(E - (E - f / std::max(std::abs(df_dE), min_df_dE)));
+                std::cout << 'i= ' << iter << ' diff= ' << diff << ' ';
                 ++iter;
                 
                 // Check for convergence
@@ -1252,11 +1253,189 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
         // Warning if not converged
         if (!converged) {
             // In practice, you might want to log this or handle it differently
-            // std::cerr << "Warning: Newton iteration did not converge at cell " << i << std::endl;
+            std::cerr << "Warning: Newton iteration did not converge at cell " << i << std::endl;
         }
 
         // Update energy directly in the input array
         u[i][2] = E;
+    }
+
+}
+
+//use implicit to update energy with radiation in place
+void thermalSourceTerm_Secant(big_array& u, double dt, double t, double dx, double x0, double nCells,
+                             big_vector A, big_vector J, big_vector B, double T0 = 300.0) {
+    int max_iter = 60;
+    double tol = 1e-8;  // Tighter tolerance for better accuracy
+    double min_sigma = 1e-12;  // Minimum conductivity to avoid division by zero
+    double min_df_dE = 1e-12;  // Minimum derivative to avoid division by zero
+    int sub_steps = 10;
+    double dt_sub = dt / sub_steps;
+
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+
+    // find our first term by newton raphson
+    for (int i = 0; i < u.size(); ++i) {
+        double E_old = u[i][2];
+        double E_0 = u[i][2];  // E^n
+        double E = E_0;        // initial guess E^0
+
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double velocity2 = (momentum / rho) * (momentum / rho);
+
+        // Precompute J²
+        double J2 = J[i] * J[i];
+
+        // Compute constant mass-fraction-based heat of formation
+        double heat_of_formation = 0.0;
+        for (int j = 0; j < 19; ++j) {
+            double mass_frac = interpolate(u[i], mass_fractions[j]);
+            heat_of_formation += mass_frac * heats_of_formation[j];
+        }
+
+        // Chemical source term (typically negative for energy release)
+        double S_chem = -rho * heat_of_formation - rho*0.5*velocity2;  // Separated from radiation
+        
+
+        // T from energy guess
+        double T = temperature({rho, momentum, E});
+        
+        // Ensure positive temperature
+        if (T <= 0) {
+            T = T0;  // Fall back to reference temperature
+        }
+
+        // σ from E guess
+        double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+        sigma = std::max(sigma, min_sigma);  // Avoid division by zero
+
+        // Radiation loss term (positive = energy loss)
+        double S_rad = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4));
+        
+        // Joule heating term (positive = energy gain)
+        double S_joule = J2 / sigma;
+
+        // Total source term: Joule heating - Radiation loss + Chemical energy
+        double S_total = S_joule - S_rad + S_chem;
+
+        // Residual function f(E) = E - E_old - dt * S_total
+        double f = E_0 - E_old - dt_sub * S_total;
+
+        // Compute the secant difference 
+        double epsilon = std::max(1e-8 * std::abs(E), 1e-10);
+        double E_eps = E + epsilon;
+
+        // Evaluate function at E + epsilon
+        double T_eps = temperature({rho, momentum, E_eps});
+        T_eps = std::max(T_eps, T0);  // Ensure positive temperature
+        
+        double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
+        sigma_eps = std::max(sigma_eps, min_sigma);
+        
+        double S_rad_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4));
+        double S_joule_eps = J2 / sigma_eps;
+        double S_total_eps = S_joule_eps - S_rad_eps + S_chem;
+        
+        double f_eps = E_eps - E_0 - dt_sub * S_total_eps;
+
+        // Finite difference derivative
+        double df_dE = (f_eps - f) / epsilon;
+        
+        // Avoid division by very small derivative
+        if (std::abs(df_dE) < min_df_dE) {
+            // Use steepest descent instead of Newton
+            double grad_sign = (f > 0) ? -1.0 : 1.0;
+            E = E + grad_sign * std::min(std::abs(f), 0.1 * std::abs(E));
+        } else {
+            // Newton step with damping for stability
+            double delta_E = -f / df_dE;
+            double damping = 1.0;
+            
+            // Limit the step size for stability
+            double max_step = 0.1 * std::abs(E);
+            if (std::abs(delta_E) > max_step) {
+                damping = max_step / std::abs(delta_E);
+            }
+            
+            E = E + damping * delta_E;
+        }
+        // Ensure energy stays physical (positive)
+        E = std::max(E, 0.1 * E_0);
+        double E_1 = E - f / std::max(std::abs(df_dE), min_df_dE);
+
+        //then employ the secant method
+        int iter = 0;
+        double diff = 1e9;
+        bool converged = false;
+        for(int step = 0; step < sub_steps; ++step){
+
+            while (iter < max_iter && diff > tol) {
+                // T from E_0 and E_1
+                double T_0 = temperature({rho, momentum, E_0});
+                double T_1 = temperature({rho, momentum, E_1});
+                
+                // Ensure positive temperatures
+                if (T_0 <= 0) {
+                    T_0 = T0;  // Fall back to reference temperature
+                }
+                if (T_1 <= 0) {
+                    T_1 = T0;  // Fall back to reference temperature
+                }
+
+                // sigma from E_0 and E_1
+                double sigma_0 = interpolate({rho, momentum, E_0}, electrical_conductivity);
+                sigma_0 = std::max(sigma_0, min_sigma);  // Avoid division by zero
+                double sigma_1 = interpolate({rho, momentum, E_1}, electrical_conductivity);
+                sigma_1 = std::max(sigma_1, min_sigma);  // Avoid division by zero
+
+                // Radiation loss terms
+                double S_rad_0 = stefan_boltzmann * kappa * (std::pow(T_0, 4) - std::pow(T0, 4));
+                double S_rad_1 = stefan_boltzmann * kappa * (std::pow(T_1, 4) - std::pow(T0, 4));
+                
+                // heating terms (positive = energy gain)
+                double S_joule_0 = J2 / sigma_0;
+                double S_joule_1 = J2 / sigma_1;
+
+                // radiation source terms Joule heating - Radiation loss + Chemical energy
+                double S_total_0 = S_joule_0 - S_rad_0 + S_chem;
+                double S_total_1 = S_joule_1 - S_rad_1 + S_chem;
+
+                // functions that we're trying to find the root of f(E) = E - E_old - dt * S_total
+                double f_0 = E_0 - E_old - dt * S_total_0;
+                double f_1 = E_1 - E_old - dt * S_total_1;
+
+                // Compute differences with a tolerance if near zero
+                double secant = f_1 * ((E_1 - E_0) / std::max((f_0 - f_1), 1e-8));
+                
+                // perform secant step
+                double temp = E_1;
+                double E_1 = E_1 - secant;
+                double E_0 = temp;
+
+
+                diff = std::abs(E_0 - E_1);
+                ++iter;
+                
+                // Check for convergence
+                if (std::abs(f) < tol) {
+                    converged = true;
+                    break;
+                }
+            }
+        }
+
+        // Warning if not converged
+        if (!converged) {
+            // In practice, you might want to log this or handle it differently
+            std::cerr << "Warning: Newton iteration did not converge at cell " << i << std::endl;
+        }
+    
+
+
+        // Update energy directly in the input array
+        u[i][2] = E_1;
     }
 
 }
@@ -1391,7 +1570,7 @@ int main() {
 
         // ------------ step 3: Joule Heating ------------
 
-        thermalSourceTerm_Newton(uPlus1, dt,t,dx,x0,nCells,A,J,B);
+        thermalSourceTerm_Secant(uPlus1, dt,t,dx,x0,nCells,A,J,B);
         applyBoundaryConditions(uPlus1);
 
         // ------------ step 4: Lorentz force -----------
