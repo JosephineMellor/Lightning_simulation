@@ -893,8 +893,10 @@ void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, doubl
 }
 
 //use explicit method to update momentum in place with sub-stepping
-void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B) {
+void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt) {
     const int nCells = u.size();
+    auto [A, J] = SolvePotential(t, x0, dx, nCells);
+    std::vector<double> B = MagneticFeild(A, dx);
     double max_rate = 0.0;
     double max_mom = 0.0;
     for (int i = 0; i < nCells; ++i) {
@@ -920,8 +922,8 @@ void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, doubl
     // Sub-step integration for stability
     for (int step = 0; step < sub_steps; ++step) {
         // Compute J and B based on current state
-        // auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
-        // std::vector<double> B = MagneticFeild(A, dx);
+        auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
+        std::vector<double> B = MagneticFeild(A, dx);
 
         // Compute cross product force
         std::vector<double> cross(nCells);
@@ -979,8 +981,10 @@ void energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double 
 }
 
 //use explicit method to update energy in place with sub-cyling
-void energyUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B) {
+void energyUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt) {
     const int nCells = u.size();
+    auto [A, J] = SolvePotential(t, x0, dx, nCells);
+    std::vector<double> B = MagneticFeild(A, dx);
     double max_rate = 0.0;
     double max_energy = 0.0;
     for (int i = 0; i < nCells; ++i) {
@@ -1005,8 +1009,8 @@ void energyUpdate_Explicit(big_array& u, double x0, double dx, double t, double 
     // Sub-step integration for stability
     for (int step = 0; step < sub_steps; ++step) {
         // Compute J and B from current state
-        // auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
-        // std::vector<double> B = MagneticFeild(A, dx);
+        auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
+        std::vector<double> B = MagneticFeild(A, dx);
 
         // Compute energy source terms
         std::vector<double> energy_source(nCells);
@@ -1176,7 +1180,7 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
     double tol = 1e-8;  // Tighter tolerance for better accuracy
     double min_sigma = 1e-12;  // Minimum conductivity to avoid division by zero
     double min_df_dE = 1e-12;  // Minimum derivative to avoid division by zero
-    int sub_steps = 1;
+    int sub_steps = 10;
     double dt_sub = dt / sub_steps;
 
     double kappa = 60;
@@ -1203,7 +1207,6 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
         // Chemical source term (typically negative for energy release)
         double S_chem = -rho * heat_of_formation - rho*0.5*velocity2;  // Separated from radiation
         
-        double f = 1e10;
         int iter = 0;
         double diff = 1e9;
         bool converged = false;
@@ -1277,7 +1280,6 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
                 E = std::max(E, 0.1 * E_old);
 
                 diff = std::abs(E - (E - f / std::max(std::abs(df_dE), min_df_dE)));
-                // std::cout<<diff<< ' ';
                 ++iter;
                 
                 // Check for convergence
@@ -1288,8 +1290,9 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
             }
         }
 
-        if ( iter == 60){
-            std::cout << "Reached maximum iteration at cell "<< i << std::endl;
+        // Warning if not converged
+        if (iter == 60 ) {
+            std::cerr << "reached max iteration at cell " << i << std::endl;
         }
 
         // Update energy directly in the input array
@@ -1373,11 +1376,11 @@ void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, do
 
 int main() { 
     clock_t start = clock();
-    int nCells = 300; //the distance between points is 0.01
+    int nCells = 200; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1.5e-5;
+    double tStop = 1.5e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -1507,11 +1510,11 @@ int main() {
 
         // ------------ step 4: Lorentz force -----------
 
-        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
-        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
         applyBoundaryConditions(uPlus1);
-        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
-        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt, A, J, B);
+        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
         applyBoundaryConditions(uPlus1);
 
         
@@ -1541,7 +1544,7 @@ int main() {
 
 
     //output
-    std::string filename = "with_thermal2.dat";
+    std::string filename = "with_thermal.dat";
     std::ofstream output(filename);
     for (int i =0; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
@@ -1560,5 +1563,6 @@ int main() {
     double seconds = elapsed - 60*minutes;
 
     std::cout << "Elapsed time = "<< minutes << " minutes "<< seconds << " seconds"<< std::endl;
+    
     
 }
