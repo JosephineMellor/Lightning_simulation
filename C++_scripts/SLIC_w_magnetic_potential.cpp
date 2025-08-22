@@ -1311,7 +1311,7 @@ void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, do
         double T = interpolate(u[i], temperatures);
         double sigma = interpolate(u[i], electrical_conductivity);
         double J2 = J[i] * J[i];
-        double v2 = u[i][1]*u[i][1];
+        double v2 = (u[i][1]*u[i][1]) / (u[i][0]*u[i][0]);
         double h_o_f = 0.0;
         for (int j=0; j<19; ++j){
             double mass_frac = interpolate(u[i], mass_fractions[j]);
@@ -1342,7 +1342,7 @@ void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, do
             double T = interpolate(u[i], temperatures);
             double sigma = interpolate(u[i], electrical_conductivity);
             double J2 = J[i] * J[i];
-            double v2 = u[i][1]*u[i][1];
+            double v2 = (u[i][1]*u[i][1]) / (u[i][0]*u[i][0]);
             double h_o_f = 0.0;
             for (int j=0; j<19; ++j){
                 double mass_frac = interpolate(u[i], mass_fractions[j]);
@@ -1498,7 +1498,7 @@ int main() {
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
             counter += 1;
-            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
+            SaveWrappedData(uPlus1, x0, dx, nCells, counter);
             std::cout << "Saved frame: " << counter << std::endl;
         }
 

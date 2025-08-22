@@ -20,11 +20,11 @@ set palette rgbformulae 21,22,23
 set cbrange [0:1.0]
 set xrange [-1:1]
 set yrange [-1:1]
-set zrange [0:1]
+set zrange [0:6]
 
-set title "Density Evolution for Cylindrical Sod Test"
+set title "Density Evolution for lightning"
 
-do for [i=0:79] {
+do for [i=0:16] {
     splot sprintf('wrapped_%d.dat', i) using 1:2:3 with pm3d notitle
 }
 
