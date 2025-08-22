@@ -1,5 +1,5 @@
 set terminal gif animate delay 5 size 1000, 800 background rgb "#d3d3d3"
-set output 'euler_density.gif'
+set output 'lightning_density.gif'
 
 set pm3d
 set hidden3d

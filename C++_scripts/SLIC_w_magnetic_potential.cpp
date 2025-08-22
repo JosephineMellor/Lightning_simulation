@@ -7,6 +7,7 @@
 #include <array>
 #include <filesystem>
 #include <tuple>
+#include <ctime>
 
 //defining some useful types
 typedef std::array<double , 500> data_vec;
@@ -14,12 +15,16 @@ typedef std::vector<double> big_vector;
 typedef std::vector<std::vector<double>> data_table;
 typedef std::array<double,3> array;
 typedef std::vector<std::array<double,3>> big_array;
+typedef std::array<double , 19> species_vec;
+typedef std::array<data_table, 19> species_tables;
 
 const double PI = 3.141592653589793;
 const double r0 = 2e-2; //2cm in meters
+const double T0 = 298;
+const double mu_0 = 4.0 * PI * 1e-7;
 
 //function to read in the data from the tabulated equation of state
-std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table> Plasma19(){
+std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_table , data_table, species_vec , species_tables> Plasma19(){
     
     //load the file
     std::ifstream file("Plasma19_EoS.txt"); 
@@ -29,6 +34,8 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
     int row = 0;
     data_vec densities;
     data_vec pressures;
+    species_vec heats_of_formation;
+    species_tables mass_fractions;
 
     //we want to save sound speeds, energies, temperatures, electrical conductivity and thermal conductivity in tables
     data_table sound_speeds(500, std::vector<double>(500));
@@ -40,6 +47,27 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
     //now loop over the data file row by row, we only want the fifth and sixth row for densities and pressures
     while(std::getline(file , line)){
         row++;
+
+        if( row ==6){
+            std::istringstream iss(line); //extract the line
+
+            big_vector row_data; 
+            double val;
+            while (iss >> val) {
+                row_data.push_back(val);
+            } //put it temporarily in an array
+
+            //then save the heats of formation
+
+            for (int i = 0; i < 19; ++i) {
+                if (i < (int)row_data.size()) {
+                    heats_of_formation[i] = row_data[i];
+                } else {
+                    std::cerr << "Insufficient data in row 6 for heats_of_formation\n";
+                    exit(1);
+                }
+            }
+        }
 
         if( row ==10 || row ==12 ){
             std::istringstream iss(line); //extract the line
@@ -118,23 +146,51 @@ std::tuple<data_vec , data_vec , data_table , data_table , data_table , data_tab
             electrical_conductivity[row-1517] = std::move(row_data);
         }
 
-        //thermal conductivity
-        if( row >= 2018 && row< 2518){
-            std::istringstream iss(line); 
+        //mass fractions
+        for (int i = 0; i < 19; i++) {
+            int min_row = 501 * (i + 4) + 14;
+            int max_row = min_row + 500;
+            mass_fractions[i].resize(500, std::vector<double>(500));
 
-            big_vector row_data; 
+            if (row >= min_row && row < max_row) {
+                std::istringstream iss(line);
+
+                big_vector row_data;
+                double val;
+                while (iss >> val) {
+                    row_data.push_back(val);
+                }
+
+                mass_fractions[i][row - min_row] = std::move(row_data);
+            }
+        }
+
+
+        //thermal conductivity
+        if (row >= 12539 && row < 13039) {
+            std::istringstream iss(line);
+
+            big_vector row_data;
             double val;
             while (iss >> val) {
                 row_data.push_back(val);
             }
 
-            thermal_conductivity[row-2018] = std::move(row_data);
+            if(row_data.size() != 500){
+                std::cerr << "Row " << row << " for thermal conductivity has " << row_data.size() << " values, expected 500.\n";
+                exit(1);
+            }
+
+            thermal_conductivity[row - 12539] = std::move(row_data);
         }
+
     }
 
 
-    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity};
+
+    return{densities , pressures , sound_speeds , energies , temperatures , electrical_conductivity , thermal_conductivity, heats_of_formation, mass_fractions};
 }
+
 
 //import our data tables and arrays as global variables
 
@@ -146,6 +202,8 @@ const auto& energies = std::get<3>(EoS_data);
 const auto& temperatures = std::get<4>(EoS_data);
 const auto& electrical_conductivity = std::get<5>(EoS_data);
 const auto& thermal_conductivity = std::get<6>(EoS_data);
+const auto& heats_of_formation = std::get<7>(EoS_data);
+const auto& mass_fractions = std::get<8>(EoS_data);
 
 //function to perform bilinear interpolation on a simplified grid (0,0) , (0,1) , (1,0) , (1,1)
 double BilinearInterpolation(double f_NE, double f_SE, double f_SW, double f_NW, double x, double y){
@@ -165,7 +223,6 @@ double ReverseBilinearInterpolation(double f_NE, double f_SE, double f_SW, doubl
 
     return y;
 }
-
 
 //functions to convert between primitive to conseravative variables
 array PrimativeToConservative(array prim){
@@ -405,13 +462,167 @@ double SoundSpeed(array u){
     return sound_speed;
 }
 
-//function to save data as spherically symmetric
+//function to find the temperature with bilinear interpolation, assumming you know the conservative form
+double temperature(array u){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double t_NE = temperatures[pressure_top_i][density_top_i];
+    double t_SE = temperatures[pressure_bottom_i][density_top_i];
+    double t_SW = temperatures[pressure_bottom_i][density_bottom_i];
+    double t_NW = temperatures[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double temperature = BilinearInterpolation(t_NE , t_SE , t_SW , t_NW , density_ratio , pressure_ratio);  
+    
+    return temperature;
+}
+
+//function to find the thermal conductivity with bilinear interpolation, assumming you know the conservative form
+double thermalConductivity(array u){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double tc_NE = thermal_conductivity[pressure_top_i][density_top_i];
+    double tc_SE = thermal_conductivity[pressure_bottom_i][density_top_i];
+    double tc_SW = thermal_conductivity[pressure_bottom_i][density_bottom_i];
+    double tc_NW = thermal_conductivity[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double thermalConductivity = BilinearInterpolation(tc_NE , tc_SE , tc_SW , tc_NW , density_ratio , pressure_ratio);  
+    
+    return thermalConductivity;
+}
+
+//function to save data as cylindrically symmetric
 void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x0, double dx, int nCells, int index, int nTheta = 200) {
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
     for (int i = 0; i <= nCells+3; ++i) {
-        double r = x0 + (i - 1) * dx;
+        double r = x0 + (i+0.5) * dx;
         double rho = results[i][0]; // Use density (or change to results[i][1] for momentum, etc.)
 
         for (int j = 0; j < nTheta; ++j) {
@@ -421,12 +632,31 @@ void SaveWrappedData(const std::vector<std::array<double, 3>>& results, double x
             out << x << " " << y << " " << rho << "\n";
         }
         out << "\n"; // Separate rings
+
+        // out<< r << results[i][0]<<results[i][1]<<results[i][2]<<"\n";
+    }
+    out.close();
+}
+
+//function to save data as 1 dimensional
+void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, double dx, int nCells, int index, int nTheta = 200) {
+    big_array results(u.size());
+    for(int i =0; i<u.size(); i++){
+        results[i] = ConservativeToPrimative(u[i]);
+    }
+    
+    std::string filename = "wrapped_" + std::to_string(index) + ".dat";
+    std::ofstream out(filename);
+    // std::ofstream out("wrapped.dat");
+    for (int i = 1; i <= nCells+3; ++i) {
+        double x = x0 + (i+0.5) * dx;
+        double temp = temperature(u[i]);
+        out << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
     }
     out.close();
 }
 
 //define a general flux function 
-
 array flux_def(array x){
     array flux;
     array y = ConservativeToPrimative(x);
@@ -441,8 +671,6 @@ array flux_def(array x){
 }
 
 //define a function to get the flux x is ui and y is ui+1 they are both arrays of length 3
-//it will spit out an array of size 3 as well give each variable their flux
-
 array getFlux(array  x , array y, double dx , double dt){
     //impliment general flux function 
     array  f_1 = flux_def(x); //f(ui)
@@ -490,14 +718,13 @@ double computeTimeStep(const big_array& u , double C, double dx) {
      return dt;
 }
 
-// Update source terms
-big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
-    big_array update(u.size());
+// Update source terms in place
+void SourceTermUpdate(big_array& u, double x0, double dx, double dt){
     double alpha = 1.0;
 
     for(int i = 0; i < u.size(); i++) { 
     
-        double r = x0 + (i-0.5) * dx;
+        double r = x0 + (i+0.5) * dx;
         double rho = u[i][0];
         double mom = u[i][1];
         double E = u[i][2];
@@ -529,14 +756,12 @@ big_array SourceTermUpdate(big_array u , double x0,double dx, double dt){
         double S_mom_2 = -alpha * u_stage1[0] * v1 * v1 / r;
         double S_E_2 = -alpha * (u_stage1[2] + p1) * v1 / r;
 
-        // Final update
-        update[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
-        update[i][1] = mom + 0.5 * dt * (S_mom + S_mom_2);
-        update[i][2] = E + 0.5 * dt * (S_E + S_E_2);
+        // Final update - modify u directly
+        u[i][0] = rho + 0.5 * dt * (S_rho + S_rho_2);
+        u[i][1] = mom + 0.5 * dt * (S_mom + S_mom_2);
+        u[i][2] = E + 0.5 * dt * (S_E + S_E_2);
         
     }
-    
-    return update;
 }
 
 void applyBoundaryConditions(big_array& u){
@@ -544,21 +769,20 @@ void applyBoundaryConditions(big_array& u){
     // ----- REFLECTIVE ------
     u[0] = u[3];
     u[1] = u[2];
-    u[n - 1] = u[n - 4];
-    u[n - 2] = u[n - 3];
+    // u[n - 1] = u[n - 4];
+    // u[n - 2] = u[n - 3];
     u[0][1] = -u[3][1];
     u[1][1] = -u[2][1];
-    u[n - 1][1] = -u[n - 4][1];
-    u[n - 2][1] = -u[n - 3][1];
+    // u[n - 1][1] = -u[n - 4][1];
+    // u[n - 2][1] = -u[n - 3][1];
 
     // ----- TRANSMISSIVE -----
     // u[0] = u[3];
     // u[1] = u[2];
-    // u[n - 1] = u[n - 4];
-    // u[n - 2] = u[n - 3];
+    u[n - 1] = u[n - 3];
+    u[n - 2] = u[n - 3];
 
-    // u[0] = u[1];
-    // u[n - 1] = u[n - 2];
+   
 }
 
 // a sub-diag, b main-diag, c sup-diag, d rhs, 
@@ -578,12 +802,13 @@ void ThomasAlorithm(const std::vector<double>& a, std::vector<double>& b,const s
 }
 
 //solve the poisson equation for magnetic potential
-std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 22708, double beta = 1294530, double gamma = 10847100, double I0 = 106405){
+std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  double x0, double dx, double nCells, double alpha = 4137.95, double beta = 114866, double gamma = 10847100, double I0 = 218000){
     //set up initial data for current density with current I(t)
     double I = I0*(std::exp(-alpha * t) - std::exp(-beta * t))*(1 - std::exp(-gamma * t))*(1 - std::exp(-gamma * t));
+    I = I0*std::exp(-alpha*t)*std::sin(beta*t);
     std::vector<double> J(nCells);
     for (int i =0; i<nCells; i++){
-        double r = x0 + (i - 0.5)*dx;
+        double r = x0 + (i+0.5)*dx;
         J[i] = -I / (PI*r0*r0) * std::exp(-(r / r0)*(r / r0));
     }
 
@@ -595,7 +820,7 @@ std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  d
 
     //set up RHS of the equation, d = -mu_0J*dx^2
     for (int i =0; i<nCells; i++){
-        d[i] = J[i] * dx * dx;
+        d[i] =  -mu_0 *J[i] * dx * dx;
     }
 
     //add dirichlet boundary conditions (identity matrix at boundaries)
@@ -604,7 +829,7 @@ std::tuple<std::vector<double>, std::vector<double>> SolvePotential(double t,  d
     d[0] = 0.0;
     b[nCells - 1] = 1.0;
     a[nCells - 2] = 0.0;
-    d[nCells - 2] = 0.0;
+    d[nCells - 1] = 0.0;
 
     //solve the tridiagonal system using the thomas algorithm as in the paper
     ThomasAlorithm(a,b,c,d);
@@ -631,68 +856,531 @@ std::vector<double> MagneticFeild(std::vector<double> A, double dx){
     return B;
 }
 
-//use euler method to update momentum
-big_array momentumUpdate(big_array u, double x0, double dx, double t, double dt){
-    // std::vector<double> A(u.size());
-    // std::vector<double> J(u.size());
-    auto [A,J] = SolvePotential(t, x0, dx, u.size());
-    std::vector<double> B(u.size());
-    B = MagneticFeild(A,dx);
+//use implicit method to update momentum in place
+void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B, int max_iter = 10, double tol = 1e-6) {
+    const int nCells = u.size();
 
-    big_array update(u.size());
-    update = u;
-    std::vector<double> cross(u.size());
-    for (int i =0; i<cross.size(); i++){
-        // J_z * B_{theta} (in -r direction)
-        cross[i] = -J[i] * B[i]; 
+    // Initial guess: u^{n+1} ≈ u^n (store original values for reference)
+    std::vector<double> original_momentum(nCells);
+    for (int i = 0; i < nCells; ++i) {
+        original_momentum[i] = u[i][1];
     }
 
-    for(int i = 0; i < u.size(); i++) { 
-    
-        double r = x0 + (i-0.5) * dx;
-        double mom = u[i][1];
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Step 1: Compute J and B based on current guess
+        auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // using t + dt for implicitness
+        std::vector<double> B = MagneticFeild(A, dx);
 
-        double mom1 = mom + dt * cross[i];
-        
-        update[i][1] = mom1;
+        // Step 2: Compute cross product force
+        std::vector<double> cross(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            cross[i] = -J[i] * B[i];
+        }
+
+        // Step 3: Update momentum using implicit formula
+        double max_diff = 0.0;
+        for (int i = 0; i < nCells; ++i) {
+            double old_momentum = u[i][1];
+            double new_momentum = original_momentum[i] + dt * cross[i];
+
+            u[i][1] = new_momentum;
+
+            double diff = std::abs(new_momentum - old_momentum);
+            max_diff = std::max(max_diff, diff);
+        }
+
     }
-    
-    return update;
 }
 
-//use euler method to update energy
-big_array energyUpdate(big_array u, double x0, double dx, double t, double dt){
-    auto [A,J] = SolvePotential(t, x0, dx, u.size());
-    std::vector<double> B(u.size());
-    B = MagneticFeild(A,dx);
-
-    big_array update(u.size());
-    update = u;
-    std::vector<double> cross(u.size());
-    for (int i =0; i<cross.size(); i++){
-        // J_z * B_{theta} (in -r direction)
-        cross[i] = -J[i] * B[i]; 
+//use explicit method to update momentum in place with sub-stepping
+void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt) {
+    const int nCells = u.size();
+    auto [A, J] = SolvePotential(t, x0, dx, nCells);
+    std::vector<double> B = MagneticFeild(A, dx);
+    double max_rate = 0.0;
+    double max_mom = 0.0;
+    for (int i = 0; i < nCells; ++i) {
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double energy = u[i][2];
+        double velocity = momentum / rho;
+        double mom_source = (-J[i] * B[i]);  // v · (J × B)
+        double source_rate = mom_source / (std::abs(energy) + 1e-10);
+        max_rate = std::max(max_rate, source_rate);
+        max_mom = std::max(max_mom, std::abs(momentum));
     }
 
-    for(int i = 0; i < u.size(); i++) { 
-    
-        double r = x0 + (i-0.5) * dx;
-        double v = u[i][1] / u[i][0];
+    double stability_factor = 0.1;
+    double dt_stable = stability_factor / (max_rate + 1e-10);
 
-        double e1 = v * cross[i];
+    int sub_steps = std::max(1,(int)std::ceil(dt / dt_stable));
+    sub_steps = std::min(sub_steps, 10);
+
+    double dt_sub = dt / sub_steps;  // smaller time step
+    double t_current = t;
+
+    // Sub-step integration for stability
+    for (int step = 0; step < sub_steps; ++step) {
+        // Compute J and B based on current state
+        auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
+        std::vector<double> B = MagneticFeild(A, dx);
+
+        // Compute cross product force
+        std::vector<double> cross(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            cross[i] = -J[i] * B[i];
+        }
+
+        // Explicit update with smaller time step
+        for (int i = 0; i < nCells; ++i) {
+            u[i][1] = u[i][1] + dt_sub * cross[i];
+        }
         
-        update[i][2] = u[i][2] + dt * e1;
+        t_current += dt_sub;
+    }
+}
+
+
+//use implicit method to update energy in place
+void energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
+    const int nCells = u.size();
+
+    // Store original energy values for reference
+    std::vector<double> original_energy(nCells);
+    for (int i = 0; i < nCells; ++i) {
+        original_energy[i] = u[i][2];
+    }
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Step 1: Compute J and B from current state (at t + dt)
+        auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);
+        std::vector<double> B = MagneticFeild(A, dx);
+
+        // Step 2: Compute cross product force and energy source
+        std::vector<double> energy_source(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            double rho = u[i][0];
+            double momentum = u[i][1];
+            double velocity = momentum / rho;
+
+            energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
+        }
+
+        // Step 3: Update energy and check convergence
+        double max_diff = 0.0;
+        for (int i = 0; i < nCells; ++i) {
+            double old_energy = u[i][2];
+            double new_energy = original_energy[i] + dt * energy_source[i];
+
+            u[i][2] = new_energy;
+
+            double diff = std::abs(new_energy - old_energy);
+            max_diff = std::max(max_diff, diff);
+        }
+    }
+}
+
+//use explicit method to update energy in place with sub-cyling
+void energyUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt) {
+    const int nCells = u.size();
+    auto [A, J] = SolvePotential(t, x0, dx, nCells);
+    std::vector<double> B = MagneticFeild(A, dx);
+    double max_rate = 0.0;
+    double max_energy = 0.0;
+    for (int i = 0; i < nCells; ++i) {
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double energy = u[i][2];
+        double velocity = momentum / rho;
+        double energy_source = velocity * (-J[i] * B[i]);  // v · (J × B)
+        double source_rate = energy_source / (std::abs(energy) + 1e-10);
+        max_rate = std::max(max_rate, source_rate);
+        max_energy = std::max(max_energy, std::abs(energy));
+    }
+
+    double stability_factor = 0.1;
+    double dt_stable = stability_factor / (max_rate + 1e-10);
+
+    int sub_steps = std::max(1,(int)std::ceil(dt / dt_stable));
+    sub_steps = std::min(sub_steps, 10);
+
+    double dt_sub = dt / sub_steps;  // smaller time step
+    double t_current = t;
+    // Sub-step integration for stability
+    for (int step = 0; step < sub_steps; ++step) {
+        // Compute J and B from current state
+        auto [A, J] = SolvePotential(t_current, x0, dx, nCells);
+        std::vector<double> B = MagneticFeild(A, dx);
+
+        // Compute energy source terms
+        std::vector<double> energy_source(nCells);
+        for (int i = 0; i < nCells; ++i) {
+            double rho = u[i][0];
+            double momentum = u[i][1];
+            double velocity = momentum / rho;
+
+            energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
+        }
+
+        // Explicit update with smaller time step
+        for (int i = 0; i < nCells; ++i) {
+            u[i][2] = u[i][2] + dt_sub * energy_source[i];
+        }
+        
+        t_current += dt_sub;
+    }
+}
+
+//function to interpolate generally
+double interpolate(array u, data_table dataTable){
+    array prim = ConservativeToPrimative(u);
+
+    //find our index for density with binary search
+    int point1 =0;
+    int point2 =499;
+    int half;
+    int density_index;
+    double rho = u[0]; 
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(rho > densities[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+    
+    //set up the linear interpolation
+    double density_top = densities[point2];
+    int density_top_i = point2;
+    double density_bottom = densities[point1];
+    int density_bottom_i = point1;
+    double density_ratio = (rho - density_bottom) / (density_top - density_bottom);
+    if(density_bottom == density_top){density_ratio = 1;}
+    
+
+    //find our index for pressure also with linear bisection
+    point1 =0;
+    point2 =500;
+    half;
+    int pressure_index;
+    double p = prim[2];
+    while(std::abs(point1-point2)>1){
+        half = floor((point1+point2)/2);
+        if(p > pressures[half]){
+            point1 = half;
+        }
+        else{
+            point2 = half;
+        }
+    }
+
+    //handle boundary terms
+    if(point1 >= 499){point1 = 499;}
+    if(point2 >= 499){point2 = 499;}
+    if(point1 <=0){point1 = 0;}
+    if(point2 <=0){point2 = 0;}
+
+    //set up linear interpolation
+    double pressure_top = pressures[point2];
+    int pressure_top_i = point2;
+    double pressure_bottom = pressures[point1];
+    int pressure_bottom_i = point1;
+    double pressure_ratio = (p - pressure_bottom) / (pressure_top - pressure_bottom);
+    if(pressure_bottom == pressure_top){pressure_ratio =1;}
+
+    //then apply to the energies table
+    double NE = dataTable[pressure_top_i][density_top_i];
+    double SE = dataTable[pressure_bottom_i][density_top_i];
+    double SW = dataTable[pressure_bottom_i][density_bottom_i];
+    double NW = dataTable[pressure_top_i][density_bottom_i];
+
+    //linear interpolate using our variables from before
+    double value = BilinearInterpolation(NE , SE , SW , NW , density_ratio , pressure_ratio);  
+    
+    return value;
+}
+
+//use implicit to update energy with radiation in place
+void thermalSourceTerm_Newton1(big_array& u, double dt, double t, double dx, double x0, double nCells,big_vector A, big_vector J, big_vector B) {
+    int max_iter = 20;
+    double tol = 1e-5;
+    // auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // use t + dt for implicit
+
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+    double epsilon = 1e-5;  // for finite difference
+
+    for (int i = 0; i < u.size(); ++i) {
+        double E_old = u[i][2];  // E^n
+        double E = E_old;        // initial guess E^0
+
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double velocity2 = (u[i][1] / u[i][0]) * (u[i][1] / u[i][0]);
+
+        // Precompute J²
+        double J2 = (J[i]) * (J[i]);
+
+        // Compute constant mass-fraction-based heat of formation
+        double heat_of_formation = 0.0;
+        for (int j = 0; j < 19; ++j) {
+            double mass_frac = interpolate(u[i], mass_fractions[j]);
+            heat_of_formation += mass_frac * heats_of_formation[j];
+        }
+
+        int iter = 0;
+        double diff = 1e9;
+
+        while (iter < max_iter && diff > tol) {
+            // T from energy guess
+            double T = temperature({rho, momentum, E});
+
+            // σ from E guess
+            double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+
+            // Radiation loss term S_T
+            double S_T = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+
+            // f(E)
+            double f = E - E_old - dt * ((1.0 / sigma) * J2 - S_T);
+
+            // f'(E) via finite difference
+            double E_eps = E + epsilon;
+
+            // T_eps from E+ε
+            double T_eps = temperature({rho, momentum, E_eps});
+            double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
+            double S_T_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4)) - rho * (heat_of_formation + 0.5 * velocity2);
+            double f_eps = E_eps - E_old - dt * ((1.0 / sigma_eps) * J2 - S_T_eps);
+
+            double df_dE = (f_eps - f) / epsilon;
+
+            // Newton step
+            double E_new = E - f / df_dE;
+            diff = std::fabs(E_new - E);
+            E = E_new;
+            ++iter;
+        }
+        // Update energy directly in the input array
+        u[i][2] = E;
+    }
+}
+
+//use implicit to update energy with radiation in place
+void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, double nCells,big_vector A, big_vector J, big_vector B, double T0 = 300.0) {
+    int max_iter = 60;
+    double tol = 1e-8;  // Tighter tolerance for better accuracy
+    double min_sigma = 1e-12;  // Minimum conductivity to avoid division by zero
+    double min_df_dE = 1e-12;  // Minimum derivative to avoid division by zero
+    int sub_steps = 10;
+    double dt_sub = dt / sub_steps;
+
+    double kappa = 60;
+    double stefan_boltzmann = 5.67e-8;
+
+    for (int i = 0; i < u.size(); ++i) {
+        double E_old = u[i][2];  // E^n
+        double E = E_old;        // initial guess E^0
+
+        double rho = u[i][0];
+        double momentum = u[i][1];
+        double velocity2 = (momentum / rho) * (momentum / rho);
+
+        // Precompute J²
+        double J2 = J[i] * J[i];
+
+        // Compute constant mass-fraction-based heat of formation
+        double heat_of_formation = 0.0;
+        for (int j = 0; j < 19; ++j) {
+            double mass_frac = interpolate(u[i], mass_fractions[j]);
+            heat_of_formation += mass_frac * heats_of_formation[j];
+        }
+
+        // Chemical source term (typically negative for energy release)
+        double S_chem = -rho * heat_of_formation - rho*0.5*velocity2;  // Separated from radiation
+        
+        int iter = 0;
+        double diff = 1e9;
+        bool converged = false;
+        for(int step = 0; step < sub_steps; ++step){
+
+            while (iter < max_iter && diff > tol) {
+                // T from energy guess
+                double T = temperature({rho, momentum, E});
+                
+                // Ensure positive temperature
+                if (T <= 0) {
+                    T = T0;  // Fall back to reference temperature
+                }
+
+                // σ from E guess
+                double sigma = interpolate({rho, momentum, E}, electrical_conductivity);
+                sigma = std::max(sigma, min_sigma);  // Avoid division by zero
+
+                // Radiation loss term (positive = energy loss)
+                double S_rad = stefan_boltzmann * kappa * (std::pow(T, 4) - std::pow(T0, 4));
+                
+                // Joule heating term (positive = energy gain)
+                double S_joule = J2 / sigma;
+
+                // Total source term: Joule heating - Radiation loss + Chemical energy
+                double S_total = S_joule - S_rad + S_chem;
+
+                // Residual function f(E) = E - E_old - dt * S_total
+                double f = E - E_old - dt_sub * S_total;
+
+                // Compute derivative using adaptive finite difference
+                double epsilon = std::max(1e-8 * std::abs(E), 1e-10);
+                double E_eps = E + epsilon;
+
+                // Evaluate function at E + epsilon
+                double T_eps = temperature({rho, momentum, E_eps});
+                T_eps = std::max(T_eps, T0);  // Ensure positive temperature
+                
+                double sigma_eps = interpolate({rho, momentum, E_eps}, electrical_conductivity);
+                sigma_eps = std::max(sigma_eps, min_sigma);
+                
+                double S_rad_eps = stefan_boltzmann * kappa * (std::pow(T_eps, 4) - std::pow(T0, 4));
+                double S_joule_eps = J2 / sigma_eps;
+                double S_total_eps = S_joule_eps - S_rad_eps + S_chem;
+                
+                double f_eps = E_eps - E_old - dt_sub * S_total_eps;
+
+                // Finite difference derivative
+                double df_dE = (f_eps - f) / epsilon;
+                
+                // Avoid division by very small derivative
+                if (std::abs(df_dE) < min_df_dE) {
+                    // Use steepest descent instead of Newton
+                    double grad_sign = (f > 0) ? -1.0 : 1.0;
+                    E = E + grad_sign * std::min(std::abs(f), 0.1 * std::abs(E));
+                } else {
+                    // Newton step with damping for stability
+                    double delta_E = -f / df_dE;
+                    double damping = 1.0;
+                    
+                    // Limit the step size for stability
+                    double max_step = 0.1 * std::abs(E);
+                    if (std::abs(delta_E) > max_step) {
+                        damping = max_step / std::abs(delta_E);
+                    }
+                    
+                    E = E + damping * delta_E;
+                }
+
+                // Ensure energy stays physical (positive)
+                E = std::max(E, 0.1 * E_old);
+
+                diff = std::abs(E - (E - f / std::max(std::abs(df_dE), min_df_dE)));
+                ++iter;
+                
+                // Check for convergence
+                if (std::abs(f) < tol) {
+                    converged = true;
+                    break;
+                }
+            }
+        }
+
+        // Warning if not converged
+        if (iter == 60 ) {
+            std::cerr << "reached max iteration at cell " << i << std::endl;
+        }
+
+        // Update energy directly in the input array
+        u[i][2] = E;
+    }
+
+}
+
+void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, double x0, double nCells,big_vector A, big_vector J, big_vector B, double T0 = 300.0){
+    const double stefan_boltz = 5.67e-8;
+    const double kappa = 60;
+    double max_rate = 0.0;
+    double max_energy = 0.0;
+
+    for(int i=0; i<nCells; ++i){
+        double T = interpolate(u[i], temperatures);
+        double sigma = interpolate(u[i], electrical_conductivity);
+        double J2 = J[i] * J[i];
+        double v2 = u[i][1]*u[i][1];
+        double h_o_f = 0.0;
+        for (int j=0; j<19; ++j){
+            double mass_frac = interpolate(u[i], mass_fractions[j]);
+            h_o_f += mass_frac * heats_of_formation[j];
+        }
+        double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
+        double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
+        double S_joule = J2/sigma;
+        double energy_source = S_joule - S_rad + S_chem;
+        double source_rate = energy_source / (std::abs(u[i][2])+1e-10);
+        max_rate = std::max(max_rate,source_rate);
+        max_energy = std::max(max_energy, std::abs(u[i][2]));
+    }
+
+    double stability_factor = 0.1;
+    double dt_stable = stability_factor / (max_rate + 1e-10);
+
+    int sub_steps = std::max(1, (int)std::ceil(dt/dt_stable));
+    sub_steps = std::min(sub_steps, 30);
+    sub_steps = 10;
+    std::cout<<sub_steps<<" ";
+
+    double dt_sub = dt / sub_steps;
+
+    for(int step = 0; step < sub_steps; ++step){
+
+        for(int i=0; i<nCells; ++i){
+            double T = interpolate(u[i], temperatures);
+            double sigma = interpolate(u[i], electrical_conductivity);
+            double J2 = J[i] * J[i];
+            double v2 = u[i][1]*u[i][1];
+            double h_o_f = 0.0;
+            for (int j=0; j<19; ++j){
+                double mass_frac = interpolate(u[i], mass_fractions[j]);
+                h_o_f += mass_frac * heats_of_formation[j];
+            }
+            double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
+            double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
+            double S_joule = J2/sigma;
+            double energy_source = S_joule - S_rad + S_chem;
+            double k_1 =  dt_sub * energy_source;
+            double T_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1}, temperatures);
+            double sigma_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1}, electrical_conductivity);
+            double h_o_f_1 = 0.0;
+            for (int j=0; j<19; ++j){
+                double mass_frac = interpolate({u[i][0], u[i][1], u[i][2] + k_1}, mass_fractions[j]);
+                h_o_f_1 += mass_frac * heats_of_formation[j];
+            }
+            double S_chem_1 = -u[i][0]*h_o_f_1 - u[i][0]*0.5*v2;
+            double S_rad_1 = stefan_boltz * kappa * (std::pow(T_1,4) - std::pow(T0,4));
+            double S_joule_1 = J2/sigma_1;
+            double energy_source_1 = S_joule_1 - S_rad_1 + S_chem_1;
+            double k_2 =  dt_sub * energy_source_1;
+
+            u[i][2] += (k_1 + k_2) * dt_sub / 2;
+        }
+
     }
     
-    return update;
+
 }
 
 int main() { 
-    int nCells = 100; //the distance between points is 0.01
+    clock_t start = clock();
+    int nCells = 200; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 1e-5;
+    double tStop = 1.5e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -701,6 +1389,8 @@ int main() {
     big_array  flux(u.size());
     big_array  uBarL(u.size());
     big_array  uBarR(u.size());
+    big_array  fluxL(u.size());
+    big_array  fluxR(u.size());
     big_array  uBarHalfL(u.size());
     big_array  uBarHalfR(u.size());
     big_array  uPlus1(u.size());
@@ -709,47 +1399,47 @@ int main() {
 
     // Initial conditions!
 
+    std::ofstream out("wrapped.dat");
+
     for(int i = 0; i < u.size(); i++) {
         // x 0 is at point i=1/2
-        double x = x0 + (i-0.5) * dx;
+        double x = x0 + (i+0.5) * dx;
         std::array<double, 3> prim;
-        // if(x <= 0.4) {
-        //     prim[0] = 1; // Density
-        //     prim[1] = 0*std::pow(10,2.5); // Velocity
-        //     prim[2] = 1*std::pow(10,5); // Pressure
-        //     } else {
-        //     prim[0] = 0.125; // Density
-        //     prim[1] = 0*std::pow(10,2.5); // Velocity
-        //     prim[2] = 0.1*std::pow(10,5); // Pressure
-        // }
-
         prim[0] = 1.225; // Density
-        prim[1] = 0*std::pow(10,2.5); // Velocity
-        prim[2] = 101325 + 2e6*std::exp(-(x/r0)*(x/r0)); // Pressure
-
+        prim[1] = 0; // Velocity
+        prim[2] = 101325 + 2.0*std::pow(10,6)*std::exp(-(x/r0)*(x/r0)); // Pressure
         u[i] = PrimativeToConservative(prim);
-        array v = ConservativeToPrimative(u[i]);
     }
 
-    double dt = computeTimeStep(u , C , dx); //the time steps
+    double dt;
     double t = tStart;
     int counter =0;
+    SaveUnwrappedData(u, x0, dx, nCells, counter);
     do {
-        // Compute the stable time step for this iteration
 
+        // Compute the stable time step for this iteration
         dt = computeTimeStep(u , C , dx); 
         t = t + dt;
         std::cout<<"t= "<<t<<" dt= "<<dt<<std::endl;
 
-        // Update source terms
-        u = SourceTermUpdate(u,x0,dx,dt);
+        // Update cylindrical source terms
+        SourceTermUpdate(u,x0,dx,0.5*dt);
+        applyBoundaryConditions(u);
+
+
+        // ---------step 1: Poisson -----------
+
+        //compute the magnetic feild, current and vector potential
+        auto [A,J] = SolvePotential(t,x0,dx,nCells);
+        auto B = MagneticFeild(A,dx);
 
         // Apply boundary conditions
         applyBoundaryConditions(u);
 
-        //find ubar
 
+        // ---------step 2: SLIC -----------
 
+        //find ubar with limiting
         for(int i=1; i<=nCells+2; ++i){
             for(int j=0; j<=2; ++j){
                 double DeltaPlus = u[i+1][j] - u[i][j];
@@ -766,7 +1456,7 @@ int main() {
                     xi=std::fmin(1, xi_R);
                     
                 }
-
+                
                 uBarL[i][j] = u[i][j] - 0.5 * xi * Delta;
                 uBarR[i][j] = u[i][j] + 0.5 * xi * Delta;
                 
@@ -775,9 +1465,11 @@ int main() {
         }
 
         for(int i=1; i<=nCells+2; ++i){
+            fluxL[i] = flux_def(uBarL[i]);
+            fluxR[i] = flux_def(uBarR[i]);
             for(int j=0; j<=2; ++j){
-                uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
-                uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(flux_def(uBarR[i] )[j]-flux_def(uBarL[i] )[j]);
+                uBarHalfL[i][j] = uBarL[i][j] - 0.5*(dt/dx)*(fluxR[i][j]-fluxL[i][j]);
+                uBarHalfR[i][j] = uBarR[i][j] - 0.5*(dt/dx)*(fluxR[i][j]-fluxL[i][j]);
                 
             }
         }
@@ -788,43 +1480,58 @@ int main() {
         applyBoundaryConditions(uBarHalfR);
 
 
-        for(int i = 0; i <= nCells+3; i++) { //Define the fluxes
+        for(int i = 0; i <= nCells+2; i++) { //Define the fluxes
             // flux[i] corresponds to cell i+1/2 
             flux[i] = getFlux( uBarHalfR[i], uBarHalfL[i+1] , dx , dt);
         }
-
-        //the below has a i-1 flux which means we need to define a flux at 0 so make sure the above ^ starts at 0! this is because we have another edge with the number of cells (like the walls)
 
         for(int i = 1; i <= nCells+3; i++) { //Update the data
             for(int j=0; j<=2; ++j){
                 uPlus1[i][j] = u[i][j] - (dt/dx) * (flux[i][j] - flux[i-1][j]);
             }
         }
-    
-        // Now replace u with the updated data for the next time step
-        u = uPlus1;
 
+        // Now replace u with the updated data for the next time step
+        // u = uPlus1;
+        applyBoundaryConditions(uPlus1);
 
         // Output data at specific time steps
-        // while (t >= 1e-5 * counter) {
-        //     big_array results(u.size());
+        while (t >= 1e-5 * counter) {
+            counter += 1;
+            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
+            std::cout << "Saved frame: " << counter << std::endl;
+        }
 
-        //     for (int i = 0; i <= results.size() - 1; ++i) {
-        //         results[i] = ConservativeToPrimative(u[i]);
-        //     }
 
-        //     SaveWrappedData(results, x0, dx, nCells, counter);
-        //     std::cout << "Saved frame: " << counter << std::endl;
-        //     counter += 1;
-        // }
+        // ------------ step 3: Joule Heating ------------
 
-        //update resistive source terms
-        u = momentumUpdate(u, x0, dx, t, dt);
-        u = energyUpdate(u, x0, dx, t, dt);
-                
-               
+        thermalSourceTerm_Newton(uPlus1, dt,t,dx,x0,nCells,A,J,B);
+        applyBoundaryConditions(uPlus1);
+
+        // ------------ step 4: Lorentz force -----------
+
+        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        applyBoundaryConditions(uPlus1);
+        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        applyBoundaryConditions(uPlus1);
+
+        
+        // cylindrical terms
+        SourceTermUpdate(uPlus1,x0,dx,0.5*dt);
+        
+        
+        // Now replace u with the updated data for the next time step
+        u = uPlus1;
+        
+        //if emergency
+        if (std::abs(dt) < 1e-12){ break;}
     } while (t < tStop);
 
+    applyBoundaryConditions(u);
+
+    // PlotWithTime(results);
     //still need to convert it back to primitive
 
     //define final results
@@ -837,14 +1544,25 @@ int main() {
 
 
     //output
-    std::string filename = "euler.dat";
+    std::string filename = "with_thermal.dat";
     std::ofstream output(filename);
-    for (int i = 0; i <= nCells+3; ++i) {
-        double x = x0 + (i - 1) * dx;
-        output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << std::endl;
+    for (int i =0; i <= nCells+3; ++i) {
+        double x = x0 + (i+0.5) * dx;
+        double temp = temperature(u[i]);
+        //std::cout<<"pressure is now "<<u[i][2]<<" at "<<i<<std::endl;
+        output << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
     }
 
     //wrap data around the r=0 axis
-    //SaveWrappedData(results, x0, dx, nCells, counter);
+    SaveUnwrappedData(u, x0, dx, nCells, counter);
+
+    //find how long the program took
+    clock_t end = clock();
+    double elapsed = double(end - start) / CLOCKS_PER_SEC;
+    double minutes = std::floor(elapsed / 60);
+    double seconds = elapsed - 60*minutes;
+
+    std::cout << "Elapsed time = "<< minutes << " minutes "<< seconds << " seconds"<< std::endl;
+    
     
 }
