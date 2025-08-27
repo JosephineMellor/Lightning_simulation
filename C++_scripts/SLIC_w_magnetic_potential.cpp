@@ -1240,48 +1240,29 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
 
 }
 
-void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, double x0, double nCells,big_vector A, big_vector J, big_vector B, double T0 = 300.0){
+void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, double x0, double nCells, double T0 = 300.0){
     const double stefan_boltz = 5.67e-8;
     const double kappa = 60;
     double max_rate = 0.0;
     double max_energy = 0.0;
-
-    for(int i=0; i<nCells; ++i){
-        double T = interpolate(u[i], temperatures);
-        double sigma = interpolate(u[i], electrical_conductivity);
-        double J2 = J[i] * J[i];
-        double v2 = u[i][1]*u[i][1];
-        double h_o_f = 0.0;
-        for (int j=0; j<19; ++j){
-            double mass_frac = interpolate(u[i], mass_fractions[j]);
-            h_o_f += mass_frac * heats_of_formation[j];
-        }
-        double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
-        double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
-        double S_joule = J2/sigma;
-        double energy_source = S_joule - S_rad + S_chem;
-        double source_rate = energy_source / (std::abs(u[i][2])+1e-10);
-        max_rate = std::max(max_rate,source_rate);
-        max_energy = std::max(max_energy, std::abs(u[i][2]));
-    }
-
-    double stability_factor = 0.1;
-    double dt_stable = stability_factor / (max_rate + 1e-10);
-
-    int sub_steps = std::max(1, (int)std::ceil(dt/dt_stable));
-    sub_steps = std::min(sub_steps, 30);
-    sub_steps = 10;
-    std::cout<<sub_steps<<" ";
+    big_vector J;
+    big_vector A;
+    big_vector J_1;
+    int sub_steps = 1;
 
     double dt_sub = dt / sub_steps;
 
     for(int step = 0; step < sub_steps; ++step){
-
+        double current_t = t + step*dt_sub;
+        std::tie(A,J) = SolvePotential(current_t, x0, dx, nCells);
+        std::tie(A,J_1) = SolvePotential(current_t + dt_sub*0.5, x0, dx, nCells);
         for(int i=0; i<nCells; ++i){
+
+            //k1
             double T = interpolate(u[i], temperatures);
             double sigma = interpolate(u[i], electrical_conductivity);
             double J2 = J[i] * J[i];
-            double v2 = u[i][1]*u[i][1];
+            double v2 = u[i][1]*u[i][1] / (u[i][0]*u[i][0]);
             double h_o_f = 0.0;
             for (int j=0; j<19; ++j){
                 double mass_frac = interpolate(u[i], mass_fractions[j]);
@@ -1289,23 +1270,116 @@ void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, do
             }
             double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
             double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
-            double S_joule = J2/sigma;
+            double S_joule = J2/( sigma+ 1e-12);
             double energy_source = S_joule - S_rad + S_chem;
             double k_1 =  dt_sub * energy_source;
-            double T_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1}, temperatures);
-            double sigma_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1}, electrical_conductivity);
+
+            //k2
+            double T_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, temperatures);
+            double sigma_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, electrical_conductivity);
             double h_o_f_1 = 0.0;
             for (int j=0; j<19; ++j){
-                double mass_frac = interpolate({u[i][0], u[i][1], u[i][2] + k_1}, mass_fractions[j]);
+                double mass_frac = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, mass_fractions[j]);
                 h_o_f_1 += mass_frac * heats_of_formation[j];
             }
             double S_chem_1 = -u[i][0]*h_o_f_1 - u[i][0]*0.5*v2;
             double S_rad_1 = stefan_boltz * kappa * (std::pow(T_1,4) - std::pow(T0,4));
-            double S_joule_1 = J2/sigma_1;
-            double energy_source_1 = S_joule_1 - S_rad_1 + S_chem_1;
+            double J2_1 = J_1[i] * J_1[i];
+            double S_joule_1 = J2_1/(sigma_1 + 1e-12);
+            double energy_source_1 = S_joule_1 + S_rad_1 + S_chem_1;
             double k_2 =  dt_sub * energy_source_1;
 
-            u[i][2] += (k_1 + k_2) * dt_sub / 2.0;
+            //update
+            u[i][2] += k_2;
+        }
+
+    }
+    
+
+}
+
+void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx, double x0, double nCells, double T0 = 300.0){
+    const double stefan_boltz = 5.67e-8;
+    const double kappa = 60;
+    double max_rate = 0.0;
+    double max_energy = 0.0;
+    big_vector J;
+    big_vector A;
+    big_vector J_1, J_2;
+    int sub_steps = 1;
+
+    double dt_sub = dt / sub_steps;
+
+    for(int step = 0; step < sub_steps; ++step){
+        double current_t = t + step*dt_sub;
+        std::tie(A,J) = SolvePotential(current_t, x0, dx, nCells);
+        std::tie(A,J_1) = SolvePotential(current_t + dt_sub*0.5, x0, dx, nCells);
+        std::tie(A,J_2) = SolvePotential(current_t + dt_sub, x0, dx, nCells);
+        for(int i=0; i<nCells; ++i){
+
+            //k1
+            double T = interpolate(u[i], temperatures);
+            double sigma = interpolate(u[i], electrical_conductivity);
+            double J2 = J[i] * J[i];
+            double v2 = u[i][1]*u[i][1] / (u[i][0]*u[i][0]);
+            double h_o_f = 0.0;
+            for (int j=0; j<19; ++j){
+                double mass_frac = interpolate(u[i], mass_fractions[j]);
+                h_o_f += mass_frac * heats_of_formation[j];
+            }
+            double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
+            double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
+            double S_joule = J2/( sigma+ 1e-12);
+            double energy_source = S_joule - S_rad + S_chem;
+            double k_1 =  dt_sub * energy_source;
+
+            //k2
+            double T_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, temperatures);
+            double sigma_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, electrical_conductivity);
+            double h_o_f_1 = 0.0;
+            for (int j=0; j<19; ++j){
+                double mass_frac = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, mass_fractions[j]);
+                h_o_f_1 += mass_frac * heats_of_formation[j];
+            }
+            double S_chem_1 = -u[i][0]*h_o_f_1 - u[i][0]*0.5*v2;
+            double S_rad_1 = stefan_boltz * kappa * (std::pow(T_1,4) - std::pow(T0,4));
+            double J2_1 = J_1[i] * J_1[i];
+            double S_joule_1 = J2_1/(sigma_1 + 1e-12);
+            double energy_source_1 = S_joule_1 + S_rad_1 + S_chem_1;
+            double k_2 =  dt_sub * energy_source_1;
+
+            //k3
+            double T_2 = interpolate({u[i][0], u[i][1], u[i][2] + k_2*0.5*dt_sub}, temperatures);
+            double sigma_2 = interpolate({u[i][0], u[i][1], u[i][2] + k_2*0.5*dt_sub}, electrical_conductivity);
+            double h_o_f_2 = 0.0;
+            for (int j=0; j<19; ++j){
+                double mass_frac = interpolate({u[i][0], u[i][1], u[i][2] + k_2*0.5*dt_sub}, mass_fractions[j]);
+                h_o_f_2 += mass_frac * heats_of_formation[j];
+            }
+            double S_chem_2 = -u[i][0]*h_o_f_2 - u[i][0]*0.5*v2;
+            double S_rad_2 = stefan_boltz * kappa * (std::pow(T_2,4) - std::pow(T0,4));
+            double J2_2 = J_1[i] * J_1[i];
+            double S_joule_2 = J2_2/(sigma_2 + 1e-12);
+            double energy_source_2 = S_joule_2 + S_rad_2 + S_chem_2;
+            double k_3 =  dt_sub * energy_source_2;
+
+            //k4
+            double T_3 = interpolate({u[i][0], u[i][1], u[i][2] + k_3*dt_sub}, temperatures);
+            double sigma_3 = interpolate({u[i][0], u[i][1], u[i][2] + k_3*dt_sub}, electrical_conductivity);
+            double h_o_f_3 = 0.0;
+            for (int j=0; j<19; ++j){
+                double mass_frac = interpolate({u[i][0], u[i][1], u[i][2] + k_3*dt_sub}, mass_fractions[j]);
+                h_o_f_3 += mass_frac * heats_of_formation[j];
+            }
+            double S_chem_3 = -u[i][0]*h_o_f_3 - u[i][0]*0.5*v2;
+            double S_rad_3 = stefan_boltz * kappa * (std::pow(T_3,4) - std::pow(T0,4));
+            double J2_3 = J_2[i] * J_2[i];
+            double S_joule_3 = J2_3/(sigma_3 + 1e-12);
+            double energy_source_3 = S_joule_3 + S_rad_3 + S_chem_3;
+            double k_4 =  dt_sub * energy_source_3;
+
+            //update
+            u[i][2] += (1.0/6.0)*(k_1 + 2*k_2 + 2*k_3 + k_4);
         }
 
     }
