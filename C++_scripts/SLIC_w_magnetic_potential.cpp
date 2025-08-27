@@ -1240,7 +1240,7 @@ void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, doub
 
 }
 
-void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, double x0, double nCells, double T0 = 300.0){
+void thermalSourceTerm_explicit_RK2(big_array& u, double dt, double t, double dx, double x0, double nCells, double T0 = 300.0){
     const double stefan_boltz = 5.67e-8;
     const double kappa = 60;
     double max_rate = 0.0;
@@ -1270,7 +1270,7 @@ void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, do
             }
             double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
             double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
-            double S_joule = J2/( sigma+ 1e-12);
+            double S_joule = J2/( sigma+ 1);
             double energy_source = S_joule - S_rad + S_chem;
             double k_1 =  dt_sub * energy_source;
 
@@ -1285,8 +1285,8 @@ void thermalSourceTerm_explicit(big_array& u, double dt, double t, double dx, do
             double S_chem_1 = -u[i][0]*h_o_f_1 - u[i][0]*0.5*v2;
             double S_rad_1 = stefan_boltz * kappa * (std::pow(T_1,4) - std::pow(T0,4));
             double J2_1 = J_1[i] * J_1[i];
-            double S_joule_1 = J2_1/(sigma_1 + 1e-12);
-            double energy_source_1 = S_joule_1 + S_rad_1 + S_chem_1;
+            double S_joule_1 = J2_1/(sigma_1 + 1);
+            double energy_source_1 = S_joule_1 - S_rad_1 + S_chem_1;
             double k_2 =  dt_sub * energy_source_1;
 
             //update
@@ -1306,7 +1306,7 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
     big_vector J;
     big_vector A;
     big_vector J_1, J_2;
-    int sub_steps = 1;
+    int sub_steps = 2;
 
     double dt_sub = dt / sub_steps;
 
@@ -1329,7 +1329,7 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
             }
             double S_chem = -u[i][0]*h_o_f - u[i][0]*0.5*v2;
             double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
-            double S_joule = J2/( sigma+ 1e-12);
+            double S_joule = J2/( sigma+ 1);
             double energy_source = S_joule - S_rad + S_chem;
             double k_1 =  dt_sub * energy_source;
 
@@ -1344,8 +1344,8 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
             double S_chem_1 = -u[i][0]*h_o_f_1 - u[i][0]*0.5*v2;
             double S_rad_1 = stefan_boltz * kappa * (std::pow(T_1,4) - std::pow(T0,4));
             double J2_1 = J_1[i] * J_1[i];
-            double S_joule_1 = J2_1/(sigma_1 + 1e-12);
-            double energy_source_1 = S_joule_1 + S_rad_1 + S_chem_1;
+            double S_joule_1 = J2_1/(sigma_1 + 1);
+            double energy_source_1 = S_joule_1 - S_rad_1 + S_chem_1;
             double k_2 =  dt_sub * energy_source_1;
 
             //k3
@@ -1359,8 +1359,8 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
             double S_chem_2 = -u[i][0]*h_o_f_2 - u[i][0]*0.5*v2;
             double S_rad_2 = stefan_boltz * kappa * (std::pow(T_2,4) - std::pow(T0,4));
             double J2_2 = J_1[i] * J_1[i];
-            double S_joule_2 = J2_2/(sigma_2 + 1e-12);
-            double energy_source_2 = S_joule_2 + S_rad_2 + S_chem_2;
+            double S_joule_2 = J2_2/(sigma_2 + 1);
+            double energy_source_2 = S_joule_2 - S_rad_2 + S_chem_2;
             double k_3 =  dt_sub * energy_source_2;
 
             //k4
@@ -1374,8 +1374,8 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
             double S_chem_3 = -u[i][0]*h_o_f_3 - u[i][0]*0.5*v2;
             double S_rad_3 = stefan_boltz * kappa * (std::pow(T_3,4) - std::pow(T0,4));
             double J2_3 = J_2[i] * J_2[i];
-            double S_joule_3 = J2_3/(sigma_3 + 1e-12);
-            double energy_source_3 = S_joule_3 + S_rad_3 + S_chem_3;
+            double S_joule_3 = J2_3/(sigma_3 + 1);
+            double energy_source_3 = S_joule_3 - S_rad_3 + S_chem_3;
             double k_4 =  dt_sub * energy_source_3;
 
             //update
@@ -1521,7 +1521,7 @@ int main() {
 
         // ------------ step 3: Joule Heating ------------
 
-        thermalSourceTerm_Newton(uPlus1,dt,t,dx,x0,nCells);
+        thermalSourceTerm_explicit_RK4(uPlus1,dt,t,dx,x0,nCells);
         applyBoundaryConditions(uPlus1);
 
         // ------------ step 4: Lorentz force -----------
