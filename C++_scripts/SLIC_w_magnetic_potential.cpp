@@ -648,7 +648,7 @@ void SaveUnwrappedData(const std::vector<std::array<double, 3>>& u, double x0, d
     std::string filename = "wrapped_" + std::to_string(index) + ".dat";
     std::ofstream out(filename);
     // std::ofstream out("wrapped.dat");
-    for (int i = 1; i <= nCells+3; ++i) {
+    for (int i = 0; i <= nCells+3; ++i) {
         double x = x0 + (i+0.5) * dx;
         double temp = temperature(u[i]);
         out << x << " " << results[i][0] <<  " " << results[i][1] <<  " " << results[i][2] << " " << temp<<std::endl;
@@ -862,42 +862,6 @@ std::vector<double> MagneticFeild(std::vector<double> A, std::vector<double> J, 
     return B;
 }
 
-//use implicit method to update momentum in place
-void momentumUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, big_vector A, big_vector J, big_vector B, int max_iter = 10, double tol = 1e-6) {
-    int nCells = u.size();
-
-    // Initial guess: u^{n+1} ≈ u^n (store original values for reference)
-    std::vector<double> original_momentum(nCells);
-    for (int i = 0; i < nCells; ++i) {
-        original_momentum[i] = u[i][1];
-    }
-
-    for (int iter = 0; iter < max_iter; ++iter) {
-        // Step 1: Compute J and B based on current guess
-        auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);  // using t + dt for implicitness
-        std::vector<double> B = MagneticFeild(A, J,dx);
-
-        // Step 2: Compute cross product force
-        std::vector<double> cross(nCells);
-        for (int i = 0; i < nCells; ++i) {
-            cross[i] = -J[i] * B[i];
-        }
-
-        // Step 3: Update momentum using implicit formula
-        double max_diff = 0.0;
-        for (int i = 0; i < nCells; ++i) {
-            double old_momentum = u[i][1];
-            double new_momentum = original_momentum[i] + dt * cross[i];
-
-            u[i][1] = new_momentum;
-
-            double diff = std::abs(new_momentum - old_momentum);
-            max_diff = std::max(max_diff, diff);
-        }
-
-    }
-}
-
 //use explicit method to update momentum in place with sub-stepping
 void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, double dt) {
     int nCells = u.size()-4;
@@ -946,44 +910,27 @@ void momentumUpdate_Explicit(big_array& u, double x0, double dx, double t, doubl
     }
 }
 
+//use explicit method to update momentum in place with RK2 method
+void momentumUpdate_Explicit_RK2(big_array& u, double x0, double dx, double t, double dt) {
+    int nCells = u.size()-4;
+    big_vector A,A_1,J,J_1;
+    // Compute J and B based on current state
+    std::tie(A,J) = SolvePotential(t, x0, dx, nCells);
+    std::tie(A_1,J_1) = SolvePotential(t + dt*0.5, x0, dx, nCells);
+    std::vector<double> B = MagneticFeild(A, J, dx);
+    std::vector<double> B_1 = MagneticFeild(A_1,J_1,dx);
 
-//use implicit method to update energy in place
-void energyUpdate_Implicit(big_array& u, double x0, double dx, double t, double dt, int max_iter = 10, double tol = 1e-6) {
-    int nCells = u.size();
-
-    // Store original energy values for reference
-    std::vector<double> original_energy(nCells);
     for (int i = 0; i < nCells; ++i) {
-        original_energy[i] = u[i][2];
+        //k1
+        double k1 = -J[i] * B[i];
+
+        //k2
+        double k2 = -J_1[i] * B_1[i];
+
+        //rk2 update
+        u[i][1] = u[i][1] + dt * k2;
     }
-
-    for (int iter = 0; iter < max_iter; ++iter) {
-        // Step 1: Compute J and B from current state (at t + dt)
-        auto [A, J] = SolvePotential(t+dt, x0, dx, nCells);
-        std::vector<double> B = MagneticFeild(A, J, dx);
-
-        // Step 2: Compute cross product force and energy source
-        std::vector<double> energy_source(nCells);
-        for (int i = 0; i < nCells; ++i) {
-            double rho = u[i][0];
-            double momentum = u[i][1];
-            double velocity = momentum / rho;
-
-            energy_source[i] = velocity * (-J[i] * B[i]);  // v · (J × B)
-        }
-
-        // Step 3: Update energy and check convergence
-        double max_diff = 0.0;
-        for (int i = 0; i < nCells; ++i) {
-            double old_energy = u[i][2];
-            double new_energy = original_energy[i] + dt * energy_source[i];
-
-            u[i][2] = new_energy;
-
-            double diff = std::abs(new_energy - old_energy);
-            max_diff = std::max(max_diff, diff);
-        }
-    }
+    
 }
 
 //use explicit method to update energy in place with sub-cyling
@@ -1035,6 +982,31 @@ void energyUpdate_Explicit(big_array& u, double x0, double dx, double t, double 
         
         t_current += dt_sub;
     }
+}
+
+//update energy with RK2
+void energyUpdate_Explicit_RK2(big_array& u, double x0, double dx, double t, double dt) {
+    int nCells = u.size()-4;
+    big_vector A,A_1,J,J_1;
+    // Compute J and B based on current state
+    std::tie(A,J) = SolvePotential(t, x0, dx, nCells);
+    std::tie(A_1,J_1) = SolvePotential(t + dt*0.5, x0, dx, nCells);
+    std::vector<double> B = MagneticFeild(A, J, dx);
+    std::vector<double> B_1 = MagneticFeild(A_1,J_1,dx);
+
+    std::vector<double> energy_source(nCells);
+    for (int i = 0; i < nCells; ++i) {
+
+        //k1
+        double k1 = (u[i][1]/u[i][0]) * (-J[i] * B[i]);  // v · (J × B)
+
+        //k2
+        double k2 = (u[i][1]/u[i][0]) * (-J_1[i] * B_1[i]);  // v · (J × B)
+
+        u[i][2] = u[i][2] + dt * k2;
+    }
+        
+     
 }
 
 //function to interpolate generally
@@ -1114,7 +1086,6 @@ double interpolate(array u, data_table dataTable){
     return value;
 }
 
-//use implicit to update energy with radiation in place
 //use implicit to update energy with radiation in place
 void thermalSourceTerm_Newton(big_array& u, double dt, double t, double dx, double x0, int nCells, double T0 = 300.0) {
     int max_iter = 80;
@@ -1272,7 +1243,7 @@ void thermalSourceTerm_explicit_RK2(big_array& u, double dt, double t, double dx
             double S_rad = stefan_boltz * kappa * (std::pow(T,4) - std::pow(T0,4));
             double S_joule = J2/( sigma+ 1);
             double energy_source = S_joule - S_rad + S_chem;
-            double k_1 =  dt_sub * energy_source;
+            double k_1 =  dt_sub*energy_source;
 
             //k2
             double T_1 = interpolate({u[i][0], u[i][1], u[i][2] + k_1*0.5*dt_sub}, temperatures);
@@ -1287,7 +1258,7 @@ void thermalSourceTerm_explicit_RK2(big_array& u, double dt, double t, double dx
             double J2_1 = J_1[i] * J_1[i];
             double S_joule_1 = J2_1/(sigma_1 + 1);
             double energy_source_1 = S_joule_1 - S_rad_1 + S_chem_1;
-            double k_2 =  dt_sub * energy_source_1;
+            double k_2 = dt_sub*energy_source_1;
 
             //update
             u[i][2] += k_2;
@@ -1393,7 +1364,7 @@ int main() {
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
-    double tStop = 5e-5;
+    double tStop = 1.5e-4;
     double C = 0.8;
     double omega = 0;
 
@@ -1444,8 +1415,8 @@ int main() {
 
         //compute the magnetic feild, current and vector potential
         // auto [A,J] = SolvePotential(t,x0,dx,nCells);
-        momentumUpdate_Explicit(u, x0, dx, t, 0.5*dt);
-        energyUpdate_Explicit(u, x0, dx, t, 0.5*dt);
+        momentumUpdate_Explicit_RK2(u, x0, dx, t, 0.5*dt);
+        energyUpdate_Explicit_RK2(u, x0, dx, t, 0.5*dt);
         applyBoundaryConditions(u);
         // auto B = MagneticFeild(A,dx);
 
@@ -1526,8 +1497,8 @@ int main() {
 
         // ------------ step 4: Lorentz force -----------
 
-        momentumUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
-        energyUpdate_Explicit(uPlus1, x0, dx, t, 0.5*dt);
+        momentumUpdate_Explicit_RK2(uPlus1, x0, dx, t, 0.5*dt);
+        energyUpdate_Explicit_RK2(uPlus1, x0, dx, t, 0.5*dt);
         applyBoundaryConditions(uPlus1);
 
         

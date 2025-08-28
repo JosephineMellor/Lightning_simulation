@@ -1,4 +1,4 @@
-set terminal pngcairo size 1000,600
+set terminal pngcairo size 600,600
 set output "density.png"
 
 
@@ -12,7 +12,7 @@ plot \
   "wrapped_16.dat" using 1:2 title "t = 150μs"   with lines
 
 
-set terminal pngcairo size 1000,600
+set terminal pngcairo size 600,600
 set output "temperature.png"
 
 
@@ -26,7 +26,7 @@ plot \
   "wrapped_16.dat" using 1:5 title "t = 150μs"   with lines
 
 
-set terminal pngcairo size 1000,600
+set terminal pngcairo size 600,600
 set output "pressure.png"
 
 
@@ -40,7 +40,7 @@ plot \
   "wrapped_16.dat" using 1:($4/101325) title "t = 150μs"   with lines
 
 
-set terminal pngcairo size 1000,600
+set terminal pngcairo size 600,600
 set output "pressure2.png"
 
 
