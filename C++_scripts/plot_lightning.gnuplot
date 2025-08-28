@@ -1,5 +1,6 @@
 set terminal pngcairo size 600,600
 set output "density.png"
+set title "Density [kg/m^3]"
 
 
 plot \
@@ -14,7 +15,7 @@ plot \
 
 set terminal pngcairo size 600,600
 set output "temperature.png"
-
+set title "Temperature [Kelvin]"
 
 plot \
   "wrapped_1.dat"  using 1:5 title "t = 0μs"     with lines, \
@@ -28,6 +29,7 @@ plot \
 
 set terminal pngcairo size 600,600
 set output "pressure.png"
+set title "Pressure [atm]"
 
 
 plot \
