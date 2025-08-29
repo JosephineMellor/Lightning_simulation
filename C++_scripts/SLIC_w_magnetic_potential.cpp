@@ -1360,7 +1360,7 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
 
 int main() { 
     clock_t start = clock();
-    int nCells = 400; //the distance between points is 0.01
+    int nCells = 200; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
@@ -1485,7 +1485,7 @@ int main() {
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
             counter += 1;
-            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
+            SaveWrappedData(uPlus1, x0, dx, nCells, counter);
             std::cout << "Saved frame: " << counter << std::endl;
         }
 
