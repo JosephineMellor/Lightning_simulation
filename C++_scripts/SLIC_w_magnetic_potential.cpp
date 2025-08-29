@@ -845,19 +845,19 @@ std::vector<double> MagneticFeild(std::vector<double> A, std::vector<double> J, 
     std::vector<double> B(A.size());
 
     // //central differences
-    // for (int i=1; i<A.size()-1; i++){
-    //     B[i] = - (A[i+1] - A[i-1]) / (2.0 * dx);
-    // }
+    for (int i=1; i<A.size()-1; i++){
+        B[i] = - (A[i+1] - A[i-1]) / (2.0 * dx);
+    }
 
-    // //endpoints
-    // B[0] = -(A[1] - A[0]) / dx;
-    // B[B.size() - 1] = -(A[A.size() - 1] - A[A.size() - 2]) / dx;
+    //endpoints
+    B[0] = -(A[1] - A[0]) / dx;
+    B[B.size() - 1] = -(A[A.size() - 1] - A[A.size() - 2]) / dx;
 
     //integral of B not derivative of A
-    for(int i=0; i<J.size(); i++){
-        double r = (i + 0.5)*dx;
-        B[i] -= mu_0 * J[i] * dx;
-    }
+    // for(int i=0; i<J.size(); i++){
+    //     double r = (i + 0.5)*dx;
+    //     B[i] -= mu_0 * J[i] * dx;
+    // }
 
     return B;
 }
@@ -1485,7 +1485,7 @@ int main() {
         // Output data at specific time steps
         while (t >= 1e-5 * counter) {
             counter += 1;
-            SaveWrappedData(uPlus1, x0, dx, nCells, counter);
+            SaveUnwrappedData(uPlus1, x0, dx, nCells, counter);
             std::cout << "Saved frame: " << counter << std::endl;
         }
 
