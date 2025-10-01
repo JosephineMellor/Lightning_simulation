@@ -1360,7 +1360,7 @@ void thermalSourceTerm_explicit_RK4(big_array& u, double dt, double t, double dx
 
 int main() { 
     clock_t start = clock();
-    int nCells = 400; //the distance between points is 0.01
+    int nCells = 200; //the distance between points is 0.01
     double x0 = 0.0;
     double x1 = 0.2;
     double tStart = 0.0; //set the start and finish time steps the same
