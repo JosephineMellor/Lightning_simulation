@@ -14,6 +14,7 @@ Finite difference and finite volume schemes modelling lightning strike.
 - Lighting modelled as a cylindrically symmetric rod.
 - Bilinear interpolation on a tabulated equation of state.
 - Reflective Boundaries (representing the line of symmetry at r=0) at LHS of mesh and transmissive boundaries (representing the artificial open boundary with air) on RHS of mesh.
+- Plots describe density, pressure and temperature against r radius.
   <p align="center">
   <img src="C++_scripts/density.png" alt="Lightning Density" width="300" />
   <img src="C++_scripts/pressure.png" alt="Lightning Pressure" width="300" />
